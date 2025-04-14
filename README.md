@@ -1,9 +1,9 @@
 
 ---
 
-### README for the Entire Application (`README.md`)
+### README 
 
-```md
+
 # WolfRead Application
 
 WolfRead is a platform for book enthusiasts to discover, review, and organize their favorite books. It consists of a React-based frontend and a Django-based backend.
