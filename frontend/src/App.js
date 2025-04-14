@@ -1,25 +1,33 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import PredictionForm from './components/sample/PredictionForm';
-import ResultHistory from './components/sample/ResultHistory';
-
-const Home = () => <h1>Strona startowa</h1>;
+import React from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Navbar from "./components/Navbar";
+import Home from "./pages/Home";
+import Catalog from "./pages/Catalog";
+import Top100 from "./pages/Top100";
+import About from "./pages/About";
+import UserProfile from "./pages/UserProfile";
+import BookDetails from "./pages/BookDetails";
+import UserFavourites from "./pages/UserFavourites";
+import UserReviews from "./pages/UserReviews";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 function App() {
   return (
     <Router>
-      <div>
-        <nav>
-          <ul>
-            <li><Link to="/">Home</Link></li>
-            <li><Link to="/prediction">Prediction Form</Link></li>
-            <li><Link to="/history">Result History</Link></li>
-          </ul>
-        </nav>
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/prediction" element={<PredictionForm />} />
-          <Route path="/history" element={<ResultHistory />} />
+          <Route path="/catalog" element={<Catalog />} />
+          <Route path="/top100" element={<Top100 />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/profile" element={<UserProfile />} />
+          <Route path="/book/:id" element={<BookDetails />} />
+          <Route path="/user-favorites" element={<UserFavourites />} />
+          <Route path="/reviews" element={<UserReviews />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
         </Routes>
       </div>
     </Router>
