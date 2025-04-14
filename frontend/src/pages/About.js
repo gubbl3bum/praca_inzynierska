@@ -21,6 +21,21 @@ const About = () => {
         Whether you're into fiction, non-fiction, fantasy, mystery, or any other genre, we've got you covered. Explore the
         best-reviewed books, track your reading progress, and discover new favorites. Join us in celebrating the world of books!
       </p>
+
+      <div className="mt-12">
+        <h2 className="text-2xl font-semibold mb-4">Technical Overview</h2>
+        <p className="text-lg text-gray-700 max-w-3xl mx-auto">
+          {/* WolfRead is powered by a React-based frontend and a Django backend. The backend leverages Django REST Framework to 
+          expose API endpoints for seamless communication with the frontend. PostgreSQL is used as the primary database, 
+          ensuring data integrity and scalability. The application is containerized using Docker, enabling easy deployment 
+          and consistent environments across development and production. */}
+          Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard
+           dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen
+            book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially 
+            unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and 
+            more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
+        </p>
+      </div>
     </div>
   );
 };
