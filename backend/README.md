@@ -1,9 +1,3 @@
-
----
-
-### README for the Backend (`backend/README.md`)
-
-
 # WolfRead Backend
 
 This is the backend of the WolfRead application, built with Django and Django REST Framework.
