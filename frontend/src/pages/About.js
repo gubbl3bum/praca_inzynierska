@@ -11,9 +11,9 @@ const About = () => {
         />
       </div>
 
-      <h1 className="text-3xl font-bold mb-4">About BookZone</h1>
+      <h1 className="text-3xl font-bold mb-4">About WolfRead</h1>
       <p className="text-lg text-gray-700 max-w-3xl mx-auto mb-8">
-        Welcome to BookZone! This is a platform where book enthusiasts can discover, review, and organize their favorite books.
+        Welcome to WolfRead! This is a platform where book enthusiasts can discover, review, and organize their favorite books.
         Our mission is to provide a space for readers to find great books and share their experiences with the community.
       </p>
 

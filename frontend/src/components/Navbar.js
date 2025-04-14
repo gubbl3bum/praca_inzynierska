@@ -6,7 +6,7 @@ const Navbar = () => {
     <nav className="bg-white shadow-md">
       <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
         <div className="flex items-center space-x-4">
-          <span className="text-2xl font-bold text-blue-600">BookZone</span>
+          <span className="text-2xl font-bold text-blue-600">WolfRead</span>
           <input
             type="text"
             placeholder="Search books..."

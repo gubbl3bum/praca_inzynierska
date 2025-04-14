@@ -16,7 +16,7 @@ const books = [
 const Home = () => {
   return (
     <div className="text-center py-16">
-      <h1 className="text-4xl font-bold mb-4 text-blue-700">📚 BookZone</h1>
+      <h1 className="text-4xl font-bold mb-4 text-blue-700">📚 WolfRead</h1>
       <p className="text-gray-600 mb-8 max-w-xl mx-auto">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed euismod eros nec velit.</p>
       <h2 className="text-xl font-semibold mb-4">See what's new</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
