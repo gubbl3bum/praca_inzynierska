@@ -15,22 +15,17 @@ const books = [
 
 const Home = () => {
   return (
-    <div className="text-center py-16">
-      <h1 className="text-4xl font-bold mb-4 text-blue-700">📚 WolfRead</h1>
-      <p className="text-gray-600 mb-8 max-w-xl mx-auto">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed euismod eros nec velit.</p>
-      <h2 className="text-xl font-semibold mb-4">See what's new</h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white text-center py-20 px-4">
+      <h1 className="text-5xl font-extrabold bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-500 mb-4">
+        📚 WolfRead
+      </h1>
+      <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
+        Discover your next favorite book. Dive into fiction, explore science, or unravel a mystery.
+      </p>
+      <h2 className="text-2xl font-semibold mb-6 text-gray-800">See what's new</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
         {books.map((book) => (
-          <BookCard
-            key={book.id}
-            id={book.id}
-            title={book.title}
-            author={book.author}
-            cover={book.cover}
-            description={book.description}
-            rating={book.rating}
-            category={book.category}
-          />
+          <BookCard key={book.id} {...book} />
         ))}
       </div>
     </div>
