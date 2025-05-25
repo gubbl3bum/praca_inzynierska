@@ -55,3 +55,5 @@ function BookCard({ id, title, author, cover, description, rating, category }) {
     </div>
   );
 }
+
+export default BookCard;
