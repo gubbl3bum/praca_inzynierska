@@ -3,13 +3,13 @@ import BookCard from '../components/BookCard';
 
 const Top100 = () => {
   return (
-    <div className="px-4 py-8 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold text-center mb-8">
-        📚 Here are the Top 100 Books of All Time<br />
-        <span className="text-gray-600 text-base font-normal">
-          (with highest reviews from our users)
-        </span>
+    <div className="px-4 py-12 max-w-7xl mx-auto">
+      <h1 className="text-3xl font-bold text-center text-blue-700 mb-2">
+        📚 Top 100 Books of All Time
       </h1>
+      <p className="text-center text-gray-600 mb-8">
+        Based on highest reviews from our amazing readers!
+      </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {Array.from({ length: 100 }).map((_, idx) => (

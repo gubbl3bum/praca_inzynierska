@@ -1,64 +1,75 @@
-import React from 'react';
 import BookCard from '../components/BookCard';
 
 const Catalog = () => {
+  // Placeholder danych książek – do podmiany na dane z backendu
+  const books = [
+    {
+      title: 'Book 1',
+      author: 'Author A',
+      description: 'Short summary of the book.',
+      rating: '4.5',
+      category: 'Fiction',
+    },
+    {
+      title: 'Book 2',
+      author: 'Author B',
+      description: 'A thrilling story about life and mystery.',
+      rating: '4.0',
+      category: 'Mystery',
+    },
+    {
+      title: 'Book 3',
+      author: 'Author C',
+      description: 'An inspiring tale of hope and perseverance.',
+      rating: '4.7',
+      category: 'Drama',
+    },
+
+  ];
+
   return (
-    <div className="flex flex-col lg:flex-row px-4 py-8 gap-6 max-w-7xl mx-auto">
-      <aside className="lg:w-1/4 w-full bg-white p-4 rounded shadow h-fit">
-        <h2 className="text-xl font-bold mb-4">Filters</h2>
+    <div className="flex flex-col lg:flex-row px-4 py-12 gap-6 max-w-7xl mx-auto">
+      <aside className="lg:w-1/4 w-full bg-white p-6 rounded-2xl shadow-md sticky top-6 self-start">
+        <h2 className="text-2xl font-bold mb-6 text-blue-700">Filters</h2>
 
-        <div className="mb-4">
-          <label className="block font-medium mb-1">Average Rating</label>
-          <select className="w-full border p-2 rounded">
-            <option>Any</option>
-            <option>4★ and up</option>
-            <option>3★ and up</option>
-            <option>2★ and up</option>
-          </select>
-        </div>
+        {[
+          { label: 'Average Rating', placeholder: null, type: 'select', options: ['Any', '4★ and up', '3★ and up', '2★ and up'] },
+          { label: 'Categories', placeholder: 'e.g. Fantasy' },
+          { label: 'Authors', placeholder: 'e.g. Tolkien' },
+          { label: 'Keywords', placeholder: 'e.g. adventure' },
+          { label: 'Release Year', placeholder: 'e.g. 2020', type: 'number' },
+        ].map(({ label, placeholder, type = 'text', options }, i) => (
+          <div key={i} className="mb-4">
+            <label className="block font-medium mb-1 text-gray-700">{label}</label>
+            {type === 'select' ? (
+              <select className="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                {options.map(opt => <option key={opt}>{opt}</option>)}
+              </select>
+            ) : (
+              <input
+                type={type}
+                className="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                placeholder={placeholder}
+              />
+            )}
+          </div>
+        ))}
 
-        <div className="mb-4">
-          <label className="block font-medium mb-1">Categories</label>
-          <input type="text" className="w-full border p-2 rounded" placeholder="e.g. Fantasy" />
-        </div>
-
-        <div className="mb-4">
-          <label className="block font-medium mb-1">Authors</label>
-          <input type="text" className="w-full border p-2 rounded" placeholder="e.g. Tolkien" />
-        </div>
-
-        <div className="mb-4">
-          <label className="block font-medium mb-1">Keywords</label>
-          <input type="text" className="w-full border p-2 rounded" placeholder="e.g. adventure" />
-        </div>
-
-        <div className="mb-4">
-          <label className="block font-medium mb-1">Release Year</label>
-          <input type="number" className="w-full border p-2 rounded" placeholder="e.g. 2020" />
-        </div>
-
-        <button className="bg-blue-600 text-white w-full py-2 rounded hover:bg-blue-700 transition">
+        <button className="bg-blue-600 hover:bg-blue-700 text-white py-2 w-full rounded-lg font-semibold transition">
           Apply Filters
         </button>
       </aside>
 
       <section className="lg:w-3/4 w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-        {Array.from({ length: 9 }).map((_, idx) => (
+        {books.map((book, idx) => (
           <BookCard
             key={idx}
-            title={`Book ${idx + 1}`}
-            author="Author Name"
-          >
-            <div className="mt-2 flex flex-col gap-2 text-sm">
-              <p>Category: Fiction</p>
-              <p>Rating: ★★★★☆</p>
-              <p>Readers: {Math.floor(Math.random() * 1000) + 100}</p>
-              <div className="flex gap-2 mt-2">
-                <button className="text-xs px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600">Add Review</button>
-                <button className="text-xs px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">Like</button>
-              </div>
-            </div>
-          </BookCard>
+            title={book.title}
+            author={book.author}
+            description={book.description}
+            rating={book.rating}
+            category={book.category}
+          />
         ))}
       </section>
     </div>

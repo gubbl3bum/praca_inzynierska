@@ -12,10 +12,12 @@ const UserFavorites = () => {
   ];
 
   return (
-    <div className="px-4 py-8 max-w-7xl mx-auto text-center">
-      <h1 className="text-2xl font-bold mb-4">User's Favourite Books</h1>
+    <div className="px-4 py-12 max-w-6xl mx-auto">
+    <h1 className="text-3xl font-bold text-center text-blue-700 mb-8">
+      ❤️ Your Favourite Books
+    </h1>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {favoriteBooks.map((book, idx) => (
           <BookCard
             key={idx}
