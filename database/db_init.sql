@@ -2,7 +2,7 @@
 CREATE TABLE books (
     id SERIAL PRIMARY KEY,
     isbn VARCHAR(20) UNIQUE,
-    title VARCHAR(500) NOT NULL,
+    title VARCHAR(500),
     author VARCHAR(300),
     publisher VARCHAR(200),
     publication_year INTEGER,

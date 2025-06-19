@@ -84,8 +84,14 @@ class BookCrossingImporter:
         cursor = self.conn.cursor()
         count = 0
         for idx, book in books_df.iterrows():
+            # Pomiń książki bez tytułu
+            if not book.get('Title') or pd.isna(book.get('Title')):
+                logger.warning(f"Pominięto książkę bez tytułu (ISBN: {book.get('ISBN')})")
+                continue
+
             if count >= limit:
                 break
+
             # Pobierz dane z Google Books
             google_info = self.get_google_books_info(
                 book.get('ISBN', ''), 
@@ -96,8 +102,8 @@ class BookCrossingImporter:
             # Przygotuj dane do wstawienia
             insert_data = {
                 'isbn': book.get('ISBN'),
-                'title': book.get('Book-Title'),
-                'author': book.get('Book-Author'),
+                'title': book.get('Title'),
+                'author': book.get('Author'),
                 'publisher': book.get('Publisher'),
                 'publication_year': book.get('Year-Of-Publication') if pd.notna(book.get('Year-Of-Publication')) else None,
                 'image_url_s': book.get('Image-URL-S'),
@@ -114,16 +120,16 @@ class BookCrossingImporter:
             
             # SQL INSERT
             sql = """
-            INSERT INTO books (isbn, title, author, publisher, publication_year, 
-                             image_url_s, image_url_m, image_url_l, description, 
-                             categories, page_count, language, average_rating, 
-                             ratings_count, google_books_id)
-            VALUES (%(isbn)s, %(title)s, %(author)s, %(publisher)s, %(publication_year)s,
-                    %(image_url_s)s, %(image_url_m)s, %(image_url_l)s, %(description)s,
-                    %(categories)s, %(page_count)s, %(language)s, %(average_rating)s,
-                    %(ratings_count)s, %(google_books_id)s)
-            ON CONFLICT (isbn) DO NOTHING
-            """
+                INSERT INTO books (isbn, title, author, publisher, publication_year, 
+                                image_url_s, image_url_m, image_url_l, description, 
+                                categories, page_count, language, average_rating, 
+                                ratings_count, google_books_id)
+                VALUES (%(isbn)s, %(title)s, %(author)s, %(publisher)s, %(publication_year)s,
+                        %(image_url_s)s, %(image_url_m)s, %(image_url_l)s, %(description)s,
+                        %(categories)s, %(page_count)s, %(language)s, %(average_rating)s,
+                        %(ratings_count)s, %(google_books_id)s)
+                ON CONFLICT (isbn) DO NOTHING
+                """
             
             cursor.execute(sql, insert_data)
             count += 1
@@ -131,10 +137,9 @@ class BookCrossingImporter:
             if idx % 10 == 0:
                 time.sleep(1)
                 logger.info(f"Processed {idx} books")
-        
         self.conn.commit()
         cursor.close()
-    
+
     def import_users(self, users_df: pd.DataFrame, limit=500):
         """Import użytkowników z datasetu"""
         cursor = self.conn.cursor()

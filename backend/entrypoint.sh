@@ -7,18 +7,12 @@ while ! nc -z db 5432; do
 done
 echo "PostgreSQL started"
 
-# Stwórz migracje jeśli nie istnieją
-echo "Creating migrations..."
-python manage.py makemigrations ml_api
-
 # Wykonaj migracje
+echo "Creating migrations..."
+python manage.py makemigrations
+
 echo "Applying migrations..."
 python manage.py migrate
 
-# Załaduj przykładowe dane (tylko jeśli baza jest pusta)
-echo "Loading sample data..."
-python manage.py load_sample_books
-
-# Uruchom serwer deweloperski
 echo "Starting Django development server..."
 python manage.py runserver 0.0.0.0:8000
