@@ -16,6 +16,29 @@ services:
       timeout: 5s
       retries: 5
 
+  data-importer:
+    build: ./database
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=book_recommendations
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./database/data:/data
+    command: |
+      sh -c "
+        echo 'Waiting for database to be ready...'
+        sleep 10
+        echo 'Downloading data...'
+        ./download_data.sh || echo 'Download failed, checking existing files...'
+        echo 'Starting data import...'
+        python data_import.py
+        echo 'Data import completed'
+      "
+
   backend:
     build: ./backend
     ports:
@@ -28,30 +51,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      data-importer:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
-
-  data-importer:
-    build: ./database
-    environment:
-      - POSTGRES_HOST=db
-      - POSTGRES_DB=book_recommendations
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - ./database/data:/data  # To jest kluczowe - montuje lokalny folder database/data jako /data w kontenerze
-    command: |
-      sh -c "
-        echo 'Waiting for database to be ready...'
-        sleep 10
-        echo 'Downloading data...'
-        ./download_data.sh || echo 'Download failed, checking existing files...'
-        echo 'Starting data import...'
-        python data_import.py
-      "
 
   frontend:
     build: ./frontend
