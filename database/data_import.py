@@ -6,6 +6,7 @@ import json
 from typing import Dict, Optional, List
 import logging
 import os
+from datetime import datetime  
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ class BookCrossingImporter:
         """Import książek do bazy z wzbogaceniem o Google Books"""
         cursor = self.conn.cursor()
         count = 0
+        current_time = datetime.now()  
         for idx, book in books_df.iterrows():
             # Pomiń książki bez tytułu
             if not book.get('Title') or pd.isna(book.get('Title')):
@@ -115,7 +117,9 @@ class BookCrossingImporter:
                 'language': google_info.get('language'),
                 'average_rating': google_info.get('average_rating'),
                 'ratings_count': google_info.get('ratings_count'),
-                'google_books_id': google_info.get('google_books_id')
+                'google_books_id': google_info.get('google_books_id'),
+                'created_at': current_time,  
+                'updated_at': current_time   
             }
             
             # SQL INSERT
@@ -123,11 +127,11 @@ class BookCrossingImporter:
                 INSERT INTO books (isbn, title, author, publisher, publication_year, 
                                 image_url_s, image_url_m, image_url_l, description, 
                                 categories, page_count, language, average_rating, 
-                                ratings_count, google_books_id)
+                                ratings_count, google_books_id, created_at, updated_at)
                 VALUES (%(isbn)s, %(title)s, %(author)s, %(publisher)s, %(publication_year)s,
                         %(image_url_s)s, %(image_url_m)s, %(image_url_l)s, %(description)s,
                         %(categories)s, %(page_count)s, %(language)s, %(average_rating)s,
-                        %(ratings_count)s, %(google_books_id)s)
+                        %(ratings_count)s, %(google_books_id)s, %(created_at)s, %(updated_at)s)
                 ON CONFLICT (isbn) DO NOTHING
                 """
             
