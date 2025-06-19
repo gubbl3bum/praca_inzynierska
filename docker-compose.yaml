@@ -1,49 +1,67 @@
 services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: book_recommendations
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     ports:
       - "8000:8000"
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=book_recommendations
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./backend:/app
-    depends_on:
-      - db
+
+  data-importer:
+    build: ./database
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/mlapp
-      - DEBUG=1
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=book_recommendations
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./database/data:/data  # To jest kluczowe - montuje lokalny folder database/data jako /data w kontenerze
+    command: |
+      sh -c "
+        echo 'Waiting for database to be ready...'
+        sleep 10
+        echo 'Downloading data...'
+        ./download_data.sh || echo 'Download failed, checking existing files...'
+        echo 'Starting data import...'
+        python data_import.py
+      "
 
   frontend:
     build: ./frontend
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend:/app
     depends_on:
       - backend
-
-  data-importer:
-    build: ./database
-    depends_on:
-      - db
     volumes:
-      - ./database:/app
-      - ./database/data:/data
-    environment:
-      - POSTGRES_DB=book_recommendations
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST=db
-    command: python data_import.py
-
-  db:
-    image: postgres:13
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    environment:
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_DB=book_recommendations
-    ports:
-      - "5432:5432"
+      - ./frontend:/app
+      - /app/node_modules
 
 volumes:
   postgres_data:
