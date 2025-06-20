@@ -12,4 +12,8 @@ urlpatterns = [
     path('books/featured/', views.books_featured, name='books_featured'),
     path('books/search/', views.books_search, name='books_search'),
     path('books/<int:book_id>/', views.book_detail, name='book_detail'),
+    
+    # Stats endpoints (nowe)
+    path('users/stats/', views.users_stats, name='users_stats'),
+    path('ratings/stats/', views.ratings_stats, name='ratings_stats'),
 ]

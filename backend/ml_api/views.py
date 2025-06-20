@@ -1,9 +1,9 @@
 from django.shortcuts import render
-from django.db.models import Q
+from django.db.models import Q, Avg, Count
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import PredictionRequest, PredictionResult, Book
+from .models import PredictionRequest, PredictionResult, Book, User, Rating
 from .serializers import PredictionRequestSerializer, PredictionResultSerializer, BookSerializer, BookListSerializer
 from .ml_model import predict
 import os
@@ -60,6 +60,11 @@ def api_status(request):
         model_path = os.path.join(os.path.dirname(__file__), 'model.pkl')
         model_exists = os.path.exists(model_path)
         
+        # Nowe statystyki dla ujednoliconego schematu
+        books_count = Book.objects.count()
+        users_count = User.objects.count()
+        ratings_count = Rating.objects.count()
+        
         # Przygotuj response
         response_data = {
             'status': 'healthy',
@@ -68,7 +73,10 @@ def api_status(request):
             'database': {
                 'connected': True,
                 'total_predictions': prediction_count,
-                'total_results': result_count
+                'total_results': result_count,
+                'total_books': books_count,
+                'total_users': users_count,
+                'total_ratings': ratings_count
             },
             'ml_model': {
                 'loaded': model_exists,
@@ -94,7 +102,7 @@ def api_status(request):
             'timestamp': timezone.now()
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# NOWE ENDPOINTY DLA KSIĄŻEK
+# ZAKTUALIZOWANE ENDPOINTY DLA UJEDNOLICONEGO SCHEMATU
 
 @api_view(['GET'])
 def books_list(request):
@@ -115,7 +123,7 @@ def books_list(request):
             books = books.filter(categories__contains=[category])
         
         # Paginacja
-        limit = min(int(request.GET.get('limit', 20)), 100)  # Max 100 książek na raz
+        limit = min(int(request.GET.get('limit', 20)), 100)
         offset = int(request.GET.get('offset', 0))
         
         total_count = books.count()
@@ -137,28 +145,36 @@ def books_list(request):
 
 @api_view(['GET'])
 def books_featured(request):
-    """Zwraca polecane książki dla strony głównej"""
+    """Zwraca polecane książki dla strony głównej - UJEDNOLICONY SCHEMAT"""
     try:
-        # Top rated books (najwyżej oceniane)
-        top_rated = Book.objects.filter(
-            average_rating__isnull=False
-        ).order_by('-average_rating', '-ratings_count')[:8]
+        # POPRAWIONE: Użyj nowego modelu Rating zamiast starych tabel
         
-        # Recent books (ostatnio dodane)
+        # Top rated books - książki z najwyższą średnią oceną z ujednoliconej tabeli ratings
+        top_rated = Book.objects.annotate(
+            avg_rating=Avg('ratings__rating'),
+            rating_count=Count('ratings')
+        ).filter(
+            avg_rating__isnull=False,
+            rating_count__gte=5  # Minimum 5 ocen
+        ).order_by('-avg_rating', '-rating_count')[:8]
+        
+        # Recent books - ostatnio dodane
         recent = Book.objects.order_by('-created_at')[:8]
         
-        # Popular books (najpopularniejsze - z największą liczbą ocen)
-        popular = Book.objects.filter(
-            ratings_count__isnull=False,
-            ratings_count__gt=0
-        ).order_by('-ratings_count')[:8]
+        # Popular books - z największą liczbą ocen
+        popular = Book.objects.annotate(
+            rating_count=Count('ratings')
+        ).filter(
+            rating_count__gt=0
+        ).order_by('-rating_count')[:8]
         
         # Jeśli nie ma wystarczająco danych, użyj wszystkich dostępnych książek
         if not top_rated.exists():
             all_books = Book.objects.all()[:8]
             top_rated = all_books
-            recent = all_books
-            popular = all_books
+            
+        if not popular.exists():
+            popular = Book.objects.all()[:8]
         
         response_data = {
             'top_rated': BookListSerializer(top_rated, many=True).data,
@@ -169,6 +185,17 @@ def books_featured(request):
         return Response(response_data)
         
     except Exception as e:
+        # Lepsze error handling z logowaniem
+        import traceback
+        error_details = {
+            'error': str(e),
+            'traceback': traceback.format_exc(),
+            'top_rated': [],
+            'recent': [],
+            'popular': []
+        }
+        print(f"Error in books_featured: {error_details}")  # Log do konsoli
+        
         return Response({
             'error': str(e),
             'top_rated': [],
@@ -226,3 +253,38 @@ def books_search(request):
         return Response({
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# NOWE ENDPOINTY DLA UJEDNOLICONEGO SCHEMATU
+
+@api_view(['GET'])
+def users_stats(request):
+    """Statystyki użytkowników"""
+    try:
+        dataset_users = User.objects.filter(user_type='dataset').count()
+        app_users = User.objects.filter(user_type='app').count()
+        
+        return Response({
+            'dataset_users': dataset_users,
+            'app_users': app_users,
+            'total_users': dataset_users + app_users
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def ratings_stats(request):
+    """Statystyki ocen"""
+    try:
+        dataset_ratings = Rating.objects.filter(source_type='dataset').count()
+        app_ratings = Rating.objects.filter(source_type='app').count()
+        
+        avg_rating = Rating.objects.aggregate(avg=Avg('rating'))['avg']
+        
+        return Response({
+            'dataset_ratings': dataset_ratings,
+            'app_ratings': app_ratings,
+            'total_ratings': dataset_ratings + app_ratings,
+            'average_rating': round(avg_rating, 2) if avg_rating else 0
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
