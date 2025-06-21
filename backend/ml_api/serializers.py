@@ -45,14 +45,24 @@ class BookSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
-    def get_best_cover_small(self, obj):
-        return obj.get_best_cover_url('S')
-    
-    def get_best_cover_medium(self, obj):
-        return obj.get_best_cover_url('M')
-    
-    def get_best_cover_large(self, obj):
-        return obj.get_best_cover_url('L')
+        def get_best_cover_small(self, obj):
+            """Zwraca najlepszą okładkę małą bez wywoływania nieistniejącej metody"""
+            return (getattr(obj, 'open_library_cover_small', None) or 
+                    getattr(obj, 'image_url_s', None) or 
+                    None)
+
+        def get_best_cover_medium(self, obj):
+            """Zwraca najlepszą okładkę średnią bez wywoływania nieistniejącej metody"""
+            return (getattr(obj, 'open_library_cover_medium', None) or 
+                    getattr(obj, 'image_url_m', None) or 
+                    getattr(obj, 'cover_url', None) or 
+                    None)
+
+        def get_best_cover_large(self, obj):
+            """Zwraca najlepszą okładkę dużą bez wywoływania nieistniejącej metody"""
+            return (getattr(obj, 'open_library_cover_large', None) or 
+                    getattr(obj, 'image_url_l', None) or 
+                    None)
 
 # Lekki serializer dla list książek (bez opisu) - zaktualizowany dla Open Library
 class BookListSerializer(serializers.ModelSerializer):
@@ -72,7 +82,11 @@ class BookListSerializer(serializers.ModelSerializer):
         ]
     
     def get_best_cover_medium(self, obj):
-        return obj.get_best_cover_url('M')
+        """Zwraca najlepszą okładkę średnią bez wywoływania nieistniejącej metody"""
+        return (getattr(obj, 'open_library_cover_medium', None) or 
+                getattr(obj, 'image_url_m', None) or 
+                getattr(obj, 'cover_url', None) or 
+                None)
 
 # Nowy serializer specjalnie dla Open Library danych
 class OpenLibraryBookSerializer(serializers.ModelSerializer):
