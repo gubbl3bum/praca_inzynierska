@@ -37,6 +37,12 @@ const Home = () => {
     }
   };
 
+  
+  const handleBookClick = (book) => {
+    console.log('Clicked book:', book);
+    // Tutaj możesz dodać navigation do szczegółów książki
+  };
+
   // Fallback sample data with Open Library integration
   const sampleBooks = [
     { 
@@ -120,22 +126,16 @@ const Home = () => {
         {title}
       </h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {books.map((book) => (
-          <BookCard 
-            key={book.id} 
-            id={book.id}
-            title={book.title}
-            author={book.author}
-            cover={book.cover_image}
-            description={book.description || `A great book by ${book.author}`}
-            rating={book.average_rating || '0.0'}
-            category={book.categories_list || book.categories}
-            isbn={book.isbn}
-            openLibraryId={book.open_library_id}
-            bestCoverMedium={book.best_cover_medium}
-            openLibraryUrl={book.open_library_url}
-          />
-        ))}
+        {books
+          .filter(book => book && book.id)
+          .map((book) => (
+            <BookCard
+              key={book.id}
+              book={book}  
+              onClick={handleBookClick}
+            />
+          ))
+        }
       </div>
     </section>
   );
@@ -186,7 +186,7 @@ const Home = () => {
           </div>
         )}
 
-        {/* Admin controls for development */}
+        {/* Admin controls for development
         {process.env.NODE_ENV === 'development' && (
           <div className="mb-8">
             <button
@@ -196,7 +196,7 @@ const Home = () => {
               Refresh Book Covers from Open Library
             </button>
           </div>
-        )}
+        )} */}
       </div>
 
       {/* Books Sections */}
