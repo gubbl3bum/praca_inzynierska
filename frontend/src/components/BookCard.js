@@ -1,173 +1,134 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FaStar, FaStarHalfAlt, FaRegStar, FaExternalLinkAlt } from 'react-icons/fa';
-import { openLibraryUtils } from '../services/api';
+import React from 'react';
 
-function BookCard({ 
-  id, 
-  title, 
-  author, 
-  cover, 
-  description, 
-  rating, 
-  category, 
-  isbn,
-  openLibraryId,
-  bestCoverMedium,
-  openLibraryUrl 
-}) {
-  const navigate = useNavigate();
-  const [coverUrl, setCoverUrl] = useState(cover);
-  const [coverError, setCoverError] = useState(false);
+const BookCard = ({ book, onClick }) => {
+  // DEFENSIVE: Sprawdź czy book istnieje
+  if (!book) {
+    console.error('BookCard: book prop is undefined');
+    return (
+      <div className="bg-gray-200 rounded-xl h-96 flex items-center justify-center">
+        <span className="text-gray-500">Brak danych książki</span>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    // Determine best cover URL to use
-    const determineBestCover = async () => {
-      // Priority order for cover sources
-      const coverSources = [
-        bestCoverMedium,  // From API with Open Library integration
-        cover,            // Original cover prop
-        isbn ? openLibraryUtils.getCoverUrls(isbn)?.medium : null  // Generate from ISBN
-      ].filter(Boolean);
-
-      // Try each cover source until we find one that works
-      for (const url of coverSources) {
-        try {
-          const exists = await openLibraryUtils.checkCoverExists(url);
-          if (exists) {
-            setCoverUrl(url);
-            setCoverError(false);
-            return;
-          }
-        } catch {
-          // Continue to next source
-        }
-      }
-      
-      // If no working cover found
-      setCoverError(true);
-    };
-
-    if (isbn || cover || bestCoverMedium) {
-      determineBestCover();
-    } else {
-      setCoverError(true);
-    }
-  }, [cover, isbn, bestCoverMedium]);
-
-  const handleClick = () => {
-    // Navigate to the book details page with state
-    navigate(`/book/${id}`, {
-      state: { 
-        id,
-        title, 
-        author, 
-        cover: coverUrl, 
-        description, 
-        rating, 
-        category,
-        isbn,
-        openLibraryId,
-        openLibraryUrl
-      }
-    });
-  };
-
-  const handleImageError = () => {
-    setCoverError(true);
-  };
-
+  // POPRAWIONE: Użyj prawdziwego ratingu z bazy danych z fallback
+  const rating = book.average_rating || 0;
+  const ratingsCount = book.ratings_count || 0;
+  
+  // Debug: sprawdź co zawiera book
+  console.log('BookCard book data:', book);
+  
+  // Funkcja do renderowania gwiazdek
   const renderStars = (rating) => {
     const stars = [];
-    const r = parseFloat(rating);
-    for (let i = 1; i <= 5; i++) {
-      if (i <= Math.floor(r)) {
-        stars.push(<FaStar key={i} className="text-yellow-400 inline" />);
-      } else if (i - 0.5 <= r) {
-        stars.push(<FaStarHalfAlt key={i} className="text-yellow-400 inline" />);
-      } else {
-        stars.push(<FaRegStar key={i} className="text-yellow-400 inline" />);
-      }
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+    
+    // Pełne gwiazdki
+    for (let i = 0; i < fullStars; i++) {
+      stars.push(<span key={i} className="text-yellow-400 text-base">★</span>);
     }
+    
+    // Półgwiazdka
+    if (hasHalfStar) {
+      stars.push(<span key="half" className="text-yellow-400 text-base">☆</span>);
+    }
+    
+    // Puste gwiazdki
+    const remainingStars = 5 - Math.ceil(rating);
+    for (let i = 0; i < remainingStars; i++) {
+      stars.push(<span key={`empty-${i}`} className="text-gray-300 text-base">☆</span>);
+    }
+    
     return stars;
   };
 
-  const handleOpenLibraryClick = (e) => {
-    e.stopPropagation(); // Prevent card click
-    if (openLibraryUrl) {
-      window.open(openLibraryUrl, '_blank');
-    }
+  // POPRAWIONE: Lepsze URL dla okładki z fallback
+  const getCoverUrl = () => {
+    return book.best_cover_medium || 
+           book.cover_url || 
+           book.image_url_m || 
+           book.open_library_cover_medium ||
+           null;
   };
 
+  const coverUrl = getCoverUrl();
+  
+  // Funkcja do skracania tekstu
+  const truncateText = (text, maxLength) => {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+  };
+  
   return (
-    <div className="bg-white rounded-2xl shadow-md hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 p-4 cursor-pointer group relative">
-      {/* Open Library link button */}
-      {openLibraryUrl && (
-        <button
-          onClick={handleOpenLibraryClick}
-          className="absolute top-2 right-2 z-10 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-          title="View on Open Library"
+    <div 
+      className="bg-white rounded-xl shadow-lg hover:shadow-xl overflow-hidden transition-all duration-300 cursor-pointer hover:-translate-y-1 flex flex-col h-96"
+      onClick={() => onClick && onClick(book)}
+    >
+      {/* POPRAWIONY: Container dla okładki - pełna widoczność */}
+      <div className="w-full h-60 relative overflow-hidden bg-gray-100 flex items-center justify-center">
+        {coverUrl ? (
+          <img 
+            src={coverUrl} 
+            alt={book.title || 'Book cover'}
+            className="max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-300 hover:scale-105"
+            onError={(e) => {
+              e.target.style.display = 'none';
+              e.target.nextSibling.style.display = 'flex';
+            }}
+          />
+        ) : null}
+        
+        {/* Placeholder dla brakujących okładek */}
+        <div 
+          className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-5xl font-bold"
+          style={{ display: coverUrl ? 'none' : 'flex' }}
         >
-          <FaExternalLinkAlt size={12} />
-        </button>
-      )}
-
-      <div onClick={handleClick}>
-        <div className="bg-gray-100 h-40 mb-4 flex items-center justify-center rounded overflow-hidden">
-          {!coverError && coverUrl ? (
-            <img
-              src={coverUrl}
-              alt={title}
-              className="w-full h-full object-cover rounded transition-transform duration-300 group-hover:scale-105"
-              onError={handleImageError}
-            />
-          ) : (
-            <div className="text-center text-gray-400">
-              <div className="text-2xl mb-1">📚</div>
-              <span className="text-xs">No cover</span>
-              {isbn && (
-                <div className="text-xs mt-1 text-gray-500">
-                  ISBN: {isbn}
-                </div>
-              )}
-            </div>
-          )}
+          📚
         </div>
-
-        <h3 className="text-lg font-semibold text-gray-800 group-hover:text-blue-600 transition-colors duration-300 line-clamp-2">
-          {title}
-        </h3>
+      </div>
+      
+      {/* Zawartość karty */}
+      <div className="p-4 flex flex-col justify-between flex-1">
+        <div>
+          <h3 
+            className="text-base font-semibold text-gray-800 mb-2 leading-tight"
+            style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden'
+            }}
+          >
+            {book.title || 'Brak tytułu'}
+          </h3>
+          <p className="text-sm text-gray-600 mb-3 overflow-hidden">
+            {truncateText(book.author || 'Nieznany autor', 40)}
+          </p>
+        </div>
         
-        <p className="text-sm text-gray-500 mb-1">{author}</p>
-        
-        {rating && (
-          <div className="flex items-center gap-1 mb-2">
-            <div className="flex gap-1">{renderStars(rating)}</div>
-            <span className="text-sm text-gray-600">({rating})</span>
+        <div className="mt-auto">
+          {/* Rating z prawdziwymi danymi */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex gap-0.5">
+              {renderStars(rating)}
+            </div>
+            <span className="text-sm text-gray-600 font-medium">
+              {rating > 0 ? `${rating.toFixed(1)}` : '(0.0)'}
+              {ratingsCount > 0 && ` (${ratingsCount})`}
+            </span>
           </div>
-        )}
-        
-        {description && (
-          <p className="text-xs text-gray-600 mb-2 line-clamp-2">{description}</p>
-        )}
-        
-        {category && (
-          <span className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-full">
-            {Array.isArray(category) ? category[0] : category}
-          </span>
-        )}
-
-        {/* Debug info in development */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-2 text-xs text-gray-400 border-t pt-2">
-            <div>ID: {id}</div>
-            {isbn && <div>ISBN: {isbn}</div>}
-            {openLibraryId && <div>OL ID: {openLibraryId}</div>}
+          
+          <div className="text-xs text-gray-500 leading-relaxed">
+            {book.isbn && <div>ISBN: {truncateText(book.isbn, 15)}</div>}
+            {book.publication_year && <div>Rok: {book.publication_year}</div>}
+            {book.id && <div>ID: {book.id}</div>}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
-}
+};
 
 export default BookCard;
