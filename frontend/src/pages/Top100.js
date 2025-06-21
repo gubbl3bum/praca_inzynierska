@@ -1,3 +1,5 @@
+// frontend/src/pages/Top100.js - Poprawiona wersja z działającą paginacją
+
 import React, { useState, useEffect } from 'react';
 import BookCard from '../components/BookCard';
 import api from '../services/api';
@@ -8,6 +10,16 @@ const Top100 = () => {
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
   const [filter, setFilter] = useState('all'); // 'all', 'recent', 'classic'
+  
+  // DODANA PAGINACJA
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    hasNext: false,
+    hasPrevious: false,
+    pageSize: 20
+  });
 
   // Time filters
   const timeFilters = [
@@ -16,146 +28,175 @@ const Top100 = () => {
     { value: 'classic', label: 'Classics (pre-2000)', icon: '📜' }
   ];
 
-  // Fetch top books
-  const fetchTopBooks = async () => {
+  // POPRAWIONA: Fetch top books with pagination
+  const fetchTopBooks = async (page = 1) => {
     try {
       setLoading(true);
       
       // Prepare API parameters
       const params = {
-        page_size: 100,
-        ordering: '-average_rating,-ratings_count',
-        average_rating__gte: 3.0 // minimum 3.0 rating
+        page,
+        page_size: 20,
+        filter: filter // time filter
       };
 
-      // Add time filter
-      if (filter === 'recent') {
-        params.publication_year__gte = new Date().getFullYear() - 5; // last 5 years
-      } else if (filter === 'classic') {
-        params.publication_year__lt = 2000; // before 2000
+      console.log('Fetching top books with params:', params);
+      
+      // UŻYWAMY NOWEGO ENDPOINTU
+      const response = await api.books.getTopRated(params);
+      
+      console.log('Top books API response:', response);
+      
+      if (response.results) {
+        setBooks(response.results);
+        
+        // POPRAWIONE: Ustaw paginację z odpowiedzi API
+        setPagination({
+          currentPage: response.current_page || page,
+          totalPages: response.num_pages || 1,
+          totalItems: response.count || 0,
+          hasNext: response.has_next || false,
+          hasPrevious: response.has_previous || false,
+          pageSize: response.page_size || 20,
+          nextPage: response.next_page,
+          previousPage: response.previous_page
+        });
+      } else {
+        // Fallback jeśli API zwraca inną strukturę
+        setBooks(Array.isArray(response) ? response.slice(0, 100) : []);
+        setPagination(prev => ({ ...prev, currentPage: page }));
       }
 
-      console.log('Fetching top books with params:', params);
-      const response = await api.books.getBooks(params);
-      
-      // Get books and sort by rating
-      let topBooks = response.results || response.books || response;
-      
-      // Additional client-side sorting
-      topBooks = topBooks
-        .filter(book => book && book.average_rating && book.average_rating > 0)
-        .sort((a, b) => {
-          // Sort by average_rating (desc), then by ratings_count (desc)
-          if (b.average_rating !== a.average_rating) {
-            return b.average_rating - a.average_rating;
-          }
-          return (b.ratings_count || 0) - (a.ratings_count || 0);
-        })
-        .slice(0, 100); // Take top 100
-
-      setBooks(topBooks);
       setError(null);
     } catch (error) {
       console.error('Error fetching top books:', error);
       setError('Failed to load book rankings');
       setBooks([]);
+      setPagination(prev => ({ ...prev, currentPage: page }));
     } finally {
       setLoading(false);
     }
   };
 
+  // Load books when filter changes
   useEffect(() => {
-    fetchTopBooks();
+    fetchTopBooks(1);
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
   }, [filter]);
+
+  // DODANA: Handle page change
+  const handlePageChange = (newPage) => {
+    console.log('Changing to page:', newPage);
+    fetchTopBooks(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // DODANA: Generate page numbers for pagination
+  const generatePageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    const start = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
+    const end = Math.min(pagination.totalPages, start + maxVisible - 1);
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    
+    return pages;
+  };
 
   const handleBookClick = (book) => {
     console.log('Clicked book:', book);
-    // TODO: Navigate to book details
   };
 
-  // Component for list view with positions
-  const BookListItem = ({ book, position }) => (
-    <div 
-      className="bg-white rounded-lg shadow-md p-4 mb-4 flex items-center gap-4 hover:shadow-lg transition-shadow cursor-pointer"
-      onClick={() => handleBookClick(book)}
-    >
-      {/* Position */}
-      <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
-        {position}
-      </div>
-
-      {/* Cover */}
-      <div className="flex-shrink-0 w-16 h-24 bg-gray-200 rounded overflow-hidden">
-        {book.best_cover_medium || book.cover_url || book.image_url_m ? (
-          <img 
-            src={book.best_cover_medium || book.cover_url || book.image_url_m} 
-            alt={book.title}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              e.target.style.display = 'none';
-              e.target.nextSibling.style.display = 'flex';
-            }}
-          />
-        ) : null}
-        <div 
-          className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm"
-          style={{ display: (book.best_cover_medium || book.cover_url || book.image_url_m) ? 'none' : 'flex' }}
-        >
-          📚
+  // POPRAWIONA: Component for list view with positions
+  const BookListItem = ({ book, position }) => {
+    // Calculate real position based on pagination
+    const realPosition = (pagination.currentPage - 1) * pagination.pageSize + position;
+    
+    return (
+      <div 
+        className="bg-white rounded-lg shadow-md p-4 mb-4 flex items-center gap-4 hover:shadow-lg transition-shadow cursor-pointer"
+        onClick={() => handleBookClick(book)}
+      >
+        {/* Position */}
+        <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+          {realPosition}
         </div>
-      </div>
 
-      {/* Book information */}
-      <div className="flex-1 min-w-0">
-        <h3 className="text-lg font-semibold text-gray-800 mb-1 truncate">
-          {book.title}
-        </h3>
-        <p className="text-gray-600 mb-2 truncate">
-          {book.author}
-        </p>
-        
-        {/* Rating */}
-        <div className="flex items-center gap-2">
-          <div className="flex">
-            {[...Array(5)].map((_, i) => (
-              <span
-                key={i}
-                className={`text-lg ${
-                  i < Math.floor(book.average_rating || 0)
-                    ? 'text-yellow-400'
-                    : 'text-gray-300'
-                }`}
-              >
-                ★
-              </span>
-            ))}
+        {/* Cover */}
+        <div className="flex-shrink-0 w-16 h-24 bg-gray-200 rounded overflow-hidden">
+          {book.best_cover_medium || book.cover_url || book.image_url_m ? (
+            <img 
+              src={book.best_cover_medium || book.cover_url || book.image_url_m} 
+              alt={book.title}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+          ) : null}
+          <div 
+            className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm"
+            style={{ display: (book.best_cover_medium || book.cover_url || book.image_url_m) ? 'none' : 'flex' }}
+          >
+            📚
           </div>
-          <span className="text-sm text-gray-600 font-medium">
-            {(book.average_rating || 0).toFixed(1)}
-          </span>
-          {book.ratings_count > 0 && (
-            <span className="text-sm text-gray-500">
-              ({book.ratings_count} ratings)
+        </div>
+
+        {/* Book information */}
+        <div className="flex-1 min-w-0">
+          <h3 className="text-lg font-semibold text-gray-800 mb-1 truncate">
+            {book.title}
+          </h3>
+          <p className="text-gray-600 mb-2 truncate">
+            {book.author}
+          </p>
+          
+          {/* Rating */}
+          <div className="flex items-center gap-2">
+            <div className="flex">
+              {[...Array(5)].map((_, i) => (
+                <span
+                  key={i}
+                  className={`text-lg ${
+                    i < Math.floor(book.average_rating || 0)
+                      ? 'text-yellow-400'
+                      : 'text-gray-300'
+                  }`}
+                >
+                  ★
+                </span>
+              ))}
+            </div>
+            <span className="text-sm text-gray-600 font-medium">
+              {(book.average_rating || 0).toFixed(1)}
             </span>
+            {book.ratings_count > 0 && (
+              <span className="text-sm text-gray-500">
+                ({book.ratings_count} ratings)
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Additional info */}
+        <div className="flex-shrink-0 text-right">
+          {book.publication_year && (
+            <div className="text-sm text-gray-500 mb-1">
+              {book.publication_year}
+            </div>
+          )}
+          {book.categories && (
+            <div className="text-xs text-gray-400 max-w-24 truncate">
+              {Array.isArray(book.categories) ? book.categories.join(', ') : book.categories}
+            </div>
           )}
         </div>
       </div>
-
-      {/* Additional info */}
-      <div className="flex-shrink-0 text-right">
-        {book.publication_year && (
-          <div className="text-sm text-gray-500 mb-1">
-            {book.publication_year}
-          </div>
-        )}
-        {book.categories && (
-          <div className="text-xs text-gray-400 max-w-24 truncate">
-            {book.categories}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -234,7 +275,7 @@ const Top100 = () => {
               <h3 className="text-lg font-semibold mb-2">Error Occurred</h3>
               <p className="mb-4">{error}</p>
               <button
-                onClick={fetchTopBooks}
+                onClick={() => fetchTopBooks(pagination.currentPage)}
                 className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg"
               >
                 Try Again
@@ -247,41 +288,56 @@ const Top100 = () => {
         {!loading && !error && (
           <>
             {/* Results info */}
-            <div className="mb-6 text-center">
+            <div className="mb-6 flex justify-between items-center">
               <p className="text-gray-600">
                 {books.length > 0 ? (
                   <>
-                    Top {books.length} books 
+                    Top {pagination.totalItems} books 
                     {filter === 'recent' && ' from the last 5 years'}
                     {filter === 'classic' && ' from before 2000'}
+                    {pagination.totalPages > 1 && (
+                      <> (page {pagination.currentPage} of {pagination.totalPages})</>
+                    )}
                   </>
                 ) : (
                   'No results found'
                 )}
               </p>
+              
+              {/* DEBUG INFO - usuń w produkcji */}
+              <div className="text-xs text-gray-400">
+                Page: {pagination.currentPage} | 
+                Has Next: {pagination.hasNext ? 'Yes' : 'No'} | 
+                Has Prev: {pagination.hasPrevious ? 'Yes' : 'No'}
+              </div>
             </div>
 
             {/* Grid view */}
             {viewMode === 'grid' && books.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                {books.map((book, index) => (
-                  <div key={book.id} className="relative">
-                    <BookCard
-                      book={book}
-                      onClick={handleBookClick}
-                    />
-                    {/* Position badge */}
-                    <div className="absolute -top-2 -left-2 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
-                      {index + 1}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-8">
+                {books.map((book, index) => {
+                  // Calculate real position based on pagination
+                  const realPosition = (pagination.currentPage - 1) * pagination.pageSize + index + 1;
+                  
+                  return (
+                    <div key={book.id} className="relative">
+                      <BookCard
+                        book={book}
+                        onClick={handleBookClick}
+                      />
+                      {/* Position badge */}
+                      <div className="absolute -top-2 -left-2 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
+                        {realPosition}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
             {/* List view */}
             {viewMode === 'list' && books.length > 0 && (
-              <div className="max-w-4xl mx-auto">
+              <div className="max-w-4xl mx-auto mb-8">
                 {books.map((book, index) => (
                   <BookListItem
                     key={book.id}
@@ -310,6 +366,52 @@ const Top100 = () => {
                 </button>
               </div>
             )}
+
+            {/* DODANA PAGINACJA */}
+            {pagination.totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 py-8">
+                {/* Previous button */}
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage - 1)}
+                  disabled={!pagination.hasPrevious}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    pagination.hasPrevious
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  ← Previous
+                </button>
+
+                {/* Page numbers */}
+                {generatePageNumbers().map(pageNum => (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      pageNum === pagination.currentPage
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+
+                {/* Next button */}
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage + 1)}
+                  disabled={!pagination.hasNext}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    pagination.hasNext
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </>
         )}
 
@@ -320,21 +422,21 @@ const Top100 = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <div className="text-3xl font-bold">
-                  {(books.reduce((sum, book) => sum + (book.average_rating || 0), 0) / books.length).toFixed(1)}⭐
+                  {books.length > 0 ? (books.reduce((sum, book) => sum + (book.average_rating || 0), 0) / books.length).toFixed(1) : '0.0'}⭐
                 </div>
-                <div className="text-blue-100">Average Rating</div>
+                <div className="text-blue-100">Average Rating (This Page)</div>
               </div>
               <div>
                 <div className="text-3xl font-bold">
                   {books.reduce((sum, book) => sum + (book.ratings_count || 0), 0).toLocaleString()}
                 </div>
-                <div className="text-blue-100">Total Ratings</div>
+                <div className="text-blue-100">Total Ratings (This Page)</div>
               </div>
               <div>
                 <div className="text-3xl font-bold">
-                  {Math.max(...books.map(book => book.publication_year || 0).filter(year => year > 0))}
+                  {pagination.totalItems}
                 </div>
-                <div className="text-blue-100">Newest Book</div>
+                <div className="text-blue-100">Total Books in Ranking</div>
               </div>
             </div>
           </div>

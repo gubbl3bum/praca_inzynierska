@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from django.db.models import Q, Avg, Count
+from django.core.paginator import Paginator
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -102,11 +103,9 @@ def api_status(request):
             'timestamp': timezone.now()
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# ZAKTUALIZOWANE ENDPOINTY DLA UJEDNOLICONEGO SCHEMATU
-
 @api_view(['GET'])
 def books_list(request):
-    """Lista wszystkich książek z opcjonalnymi filtrami"""
+    """Lista wszystkich książek z opcjonalnymi filtrami i paginacją"""
     try:
         books = Book.objects.all()
         
@@ -115,40 +114,129 @@ def books_list(request):
         if search:
             books = books.filter(
                 Q(title__icontains=search) | 
-                Q(author__icontains=search)
+                Q(author__icontains=search) |
+                Q(description__icontains=search)
             )
         
         category = request.GET.get('category')
         if category:
             books = books.filter(categories__contains=[category])
+            
+        author = request.GET.get('author')
+        if author:
+            books = books.filter(author__icontains=author)
+            
+        # Filtry roku
+        year_from = request.GET.get('year_from')
+        if year_from:
+            books = books.filter(publication_year__gte=int(year_from))
+            
+        year_to = request.GET.get('year_to')
+        if year_to:
+            books = books.filter(publication_year__lte=int(year_to))
+            
+        # Filtr ratingu
+        rating_min = request.GET.get('rating_min')
+        if rating_min:
+            books = books.filter(average_rating__gte=float(rating_min))
         
-        # Paginacja
-        limit = min(int(request.GET.get('limit', 20)), 100)
-        offset = int(request.GET.get('offset', 0))
+        # Sortowanie
+        sort = request.GET.get('sort', '-created_at')
+        valid_sorts = [
+            'title', '-title', 'author', '-author', 'created_at', '-created_at',
+            'average_rating', '-average_rating', 'publication_year', '-publication_year'
+        ]
+        if sort in valid_sorts:
+            books = books.order_by(sort)
+        else:
+            books = books.order_by('-created_at')
         
-        total_count = books.count()
-        books = books[offset:offset + limit]
+        # POPRAWIONA PAGINACJA
+        page = int(request.GET.get('page', 1))
+        page_size = min(int(request.GET.get('page_size', 20)), 100)  # max 100
         
-        serializer = BookListSerializer(books, many=True)
+        paginator = Paginator(books, page_size)
+        page_obj = paginator.get_page(page)
+        
+        serializer = BookListSerializer(page_obj.object_list, many=True)
         
         return Response({
-            'count': total_count,
+            'count': paginator.count,
+            'num_pages': paginator.num_pages,
+            'current_page': page_obj.number,
+            'has_next': page_obj.has_next(),
+            'has_previous': page_obj.has_previous(),
+            'next_page': page_obj.next_page_number() if page_obj.has_next() else None,
+            'previous_page': page_obj.previous_page_number() if page_obj.has_previous() else None,
             'results': serializer.data,
-            'limit': limit,
-            'offset': offset
+            'page_size': page_size
         })
         
     except Exception as e:
         return Response({
-            'error': str(e)
+            'error': str(e),
+            'count': 0,
+            'results': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def books_top_rated(request):
+    """Endpoint dla Top 100 książek z paginacją"""
+    try:
+        # Pobierz książki z oceną
+        books = Book.objects.annotate(
+            avg_rating=Avg('ratings__rating'),
+            rating_count=Count('ratings')
+        ).filter(
+            avg_rating__isnull=False,
+            avg_rating__gte=3.0,  # minimum 3.0
+            rating_count__gte=1   # minimum 1 ocena
+        )
+        
+        # Filtry czasowe
+        time_filter = request.GET.get('filter', 'all')
+        if time_filter == 'recent':
+            current_year = timezone.now().year
+            books = books.filter(publication_year__gte=current_year - 5)
+        elif time_filter == 'classic':
+            books = books.filter(publication_year__lt=2000)
+        
+        # Sortowanie według oceny
+        books = books.order_by('-avg_rating', '-rating_count')
+        
+        # Paginacja
+        page = int(request.GET.get('page', 1))
+        page_size = min(int(request.GET.get('page_size', 20)), 100)
+        
+        paginator = Paginator(books, page_size)
+        page_obj = paginator.get_page(page)
+        
+        serializer = BookListSerializer(page_obj.object_list, many=True)
+        
+        return Response({
+            'count': min(paginator.count, 100),  # Limit do 100
+            'num_pages': min(paginator.num_pages, 5),  # Max 5 stron (100/20)
+            'current_page': page_obj.number,
+            'has_next': page_obj.has_next() and page_obj.number < 5,
+            'has_previous': page_obj.has_previous(),
+            'next_page': page_obj.next_page_number() if page_obj.has_next() and page_obj.number < 5 else None,
+            'previous_page': page_obj.previous_page_number() if page_obj.has_previous() else None,
+            'results': serializer.data[:100],  # Zawsze max 100 wyników
+            'page_size': page_size,
+            'filter': time_filter
+        })
+        
+    except Exception as e:
+        return Response({
+            'error': str(e),
+            'count': 0,
+            'results': []
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 def books_featured(request):
-    """Zwraca polecane książki dla strony głównej - UJEDNOLICONY SCHEMAT"""
-    try:
-        # POPRAWIONE: Użyj nowego modelu Rating zamiast starych tabel
-        
+    """Zwraca polecane książki dla strony głównej"""
+    try:        
         # Top rated books - książki z najwyższą średnią oceną z ujednoliconej tabeli ratings
         top_rated = Book.objects.annotate(
             avg_rating=Avg('ratings__rating'),
@@ -253,8 +341,6 @@ def books_search(request):
         return Response({
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# NOWE ENDPOINTY DLA UJEDNOLICONEGO SCHEMATU
 
 @api_view(['GET'])
 def users_stats(request):

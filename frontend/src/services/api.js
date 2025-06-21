@@ -14,13 +14,16 @@ const apiCall = async (endpoint, options = {}) => {
   };
 
   try {
+    console.log(`API call: ${url}`); // Debug
     const response = await fetch(url, config);
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    return await response.json();
+    const data = await response.json();
+    console.log(`API response for ${endpoint}:`, data); // Debug
+    return data;
   } catch (error) {
     console.error(`API call failed for ${endpoint}:`, error);
     throw error;
@@ -32,10 +35,17 @@ export const booksAPI = {
   // Get featured books for home page
   getFeatured: () => apiCall('/books/featured/'),
   
-  // Get all books with pagination and filters
+  // POPRAWIONA: Get all books with pagination and filters
   getBooks: (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     const endpoint = queryString ? `/books/?${queryString}` : '/books/';
+    return apiCall(endpoint);
+  },
+  
+  // NOWA: Get top rated books with pagination
+  getTopRated: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const endpoint = queryString ? `/books/top-rated/?${queryString}` : '/books/top-rated/';
     return apiCall(endpoint);
   },
   
@@ -77,7 +87,37 @@ export const mlAPI = {
   getStatus: () => apiCall('/status/')
 };
 
-// Open Library utilities
+// POPRAWIONE: Pagination utilities
+export const paginationUtils = {
+  // Create pagination info from API response
+  createPaginationInfo: (apiResponse) => {
+    return {
+      currentPage: apiResponse.current_page || 1,
+      totalPages: apiResponse.num_pages || 1,
+      totalItems: apiResponse.count || 0,
+      hasNext: apiResponse.has_next || false,
+      hasPrevious: apiResponse.has_previous || false,
+      nextPage: apiResponse.next_page || null,
+      previousPage: apiResponse.previous_page || null,
+      pageSize: apiResponse.page_size || 20
+    };
+  },
+  
+  // Generate page numbers for pagination display
+  generatePageNumbers: (currentPage, totalPages, maxVisible = 5) => {
+    const pages = [];
+    const start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    const end = Math.min(totalPages, start + maxVisible - 1);
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    
+    return pages;
+  }
+};
+
+// Open Library utilities (bez zmian)
 export const openLibraryUtils = {
   // Generate cover URLs for different sizes
   getCoverUrls: (isbn) => {
@@ -116,7 +156,6 @@ export const openLibraryUtils = {
   
   // Get best available cover from multiple sources
   getBestCover: async (book) => {
-    // Priority: stored URLs first, then Open Library generated URLs
     const candidates = [
       book.image_url_m,
       book.image_url_l,
@@ -136,7 +175,7 @@ export const openLibraryUtils = {
   }
 };
 
-// Error handling helper
+// Error handling helper (bez zmian)
 export const handleApiError = (error, fallbackMessage = 'Something went wrong') => {
   if (error.message.includes('HTTP error')) {
     const status = error.message.match(/status: (\d+)/)?.[1];
@@ -164,6 +203,7 @@ const api = {
   books: booksAPI,
   ml: mlAPI,
   openLibrary: openLibraryUtils,
+  pagination: paginationUtils,
   handleError: handleApiError
 };
 

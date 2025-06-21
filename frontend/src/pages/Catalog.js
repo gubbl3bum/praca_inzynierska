@@ -1,3 +1,5 @@
+// frontend/src/pages/Catalog.js - Poprawiona wersja z działającą paginacją
+
 import React, { useState, useEffect } from 'react';
 import BookCard from '../components/BookCard';
 import api from '../services/api';
@@ -13,17 +15,19 @@ const Catalog = () => {
     year_from: '',
     year_to: '',
     rating_min: '',
-    sort: '-created_at' // default to newest
+    sort: '-created_at'
   });
+  
+  // POPRAWIONA PAGINACJA - używamy struktury z backendu
   const [pagination, setPagination] = useState({
-    page: 1,
+    currentPage: 1,
     totalPages: 1,
-    totalBooks: 0,
+    totalItems: 0,
     hasNext: false,
-    hasPrevious: false
+    hasPrevious: false,
+    pageSize: 20
   });
 
-  // Sort options
   const sortOptions = [
     { value: '-created_at', label: 'Newest First' },
     { value: 'created_at', label: 'Oldest First' },
@@ -35,7 +39,7 @@ const Catalog = () => {
     { value: '-author', label: 'Author Z-A' }
   ];
 
-  // Fetch books from API
+  // POPRAWIONA: Fetch books from API
   const fetchBooks = async (page = 1) => {
     try {
       setLoading(true);
@@ -57,20 +61,27 @@ const Catalog = () => {
       console.log('Fetching books with params:', params);
       const response = await api.books.getBooks(params);
       
-      setBooks(response.results || response.books || response);
+      // POPRAWIONE: Sprawdź strukturę odpowiedzi
+      console.log('API response:', response);
       
-      // Set pagination if API returns this information
       if (response.results) {
+        setBooks(response.results);
+        
+        // POPRAWIONE: Użyj danych z API do ustawienia paginacji
         setPagination({
-          page,
-          totalPages: Math.ceil(response.count / 20),
-          totalBooks: response.count,
-          hasNext: !!response.next,
-          hasPrevious: !!response.previous
+          currentPage: response.current_page || page,
+          totalPages: response.num_pages || 1,
+          totalItems: response.count || 0,
+          hasNext: response.has_next || false,
+          hasPrevious: response.has_previous || false,
+          pageSize: response.page_size || 20,
+          nextPage: response.next_page,
+          previousPage: response.previous_page
         });
       } else {
-        // Fallback if API doesn't return pagination
-        setPagination(prev => ({ ...prev, page }));
+        // Fallback jeśli API zwraca inną strukturę
+        setBooks(Array.isArray(response) ? response : []);
+        setPagination(prev => ({ ...prev, currentPage: page }));
       }
 
       setError(null);
@@ -78,6 +89,7 @@ const Catalog = () => {
       console.error('Error fetching books:', error);
       setError('Failed to load book catalog');
       setBooks([]);
+      setPagination(prev => ({ ...prev, currentPage: page }));
     } finally {
       setLoading(false);
     }
@@ -86,7 +98,7 @@ const Catalog = () => {
   // Load books when filters change
   useEffect(() => {
     fetchBooks(1);
-    setPagination(prev => ({ ...prev, page: 1 }));
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
   }, [filters]);
 
   // Handle filter changes
@@ -103,8 +115,9 @@ const Catalog = () => {
     fetchBooks(1);
   };
 
-  // Handle page change
+  // POPRAWIONA: Handle page change
   const handlePageChange = (newPage) => {
+    console.log('Changing to page:', newPage);
     fetchBooks(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -124,7 +137,20 @@ const Catalog = () => {
 
   const handleBookClick = (book) => {
     console.log('Clicked book:', book);
-    // TODO: Navigate to book details
+  };
+
+  // POPRAWIONA: Generate page numbers for pagination
+  const generatePageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    const start = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
+    const end = Math.min(pagination.totalPages, start + maxVisible - 1);
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    
+    return pages;
   };
 
   return (
@@ -135,7 +161,8 @@ const Catalog = () => {
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">Book Catalog</h1>
           <p className="text-gray-600">
-            Browse and filter our collection {pagination.totalBooks > 0 && `of ${pagination.totalBooks} books`}
+            Browse and filter our collection 
+            {pagination.totalItems > 0 && ` of ${pagination.totalItems} books`}
           </p>
         </div>
 
@@ -297,7 +324,7 @@ const Catalog = () => {
               <h3 className="text-lg font-semibold mb-2">Error Occurred</h3>
               <p className="mb-4">{error}</p>
               <button
-                onClick={() => fetchBooks(pagination.page)}
+                onClick={() => fetchBooks(pagination.currentPage)}
                 className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg"
               >
                 Try Again
@@ -314,15 +341,22 @@ const Catalog = () => {
               <p className="text-gray-600">
                 {books.length > 0 ? (
                   <>
-                    Found {pagination.totalBooks > 0 ? pagination.totalBooks : books.length} books
+                    Found {pagination.totalItems} books
                     {pagination.totalPages > 1 && (
-                      <> (page {pagination.page} of {pagination.totalPages})</>
+                      <> (page {pagination.currentPage} of {pagination.totalPages})</>
                     )}
                   </>
                 ) : (
                   'No results found'
                 )}
               </p>
+              
+              {/* DEBUG INFO - usuń w produkcji */}
+              <div className="text-xs text-gray-400">
+                Page: {pagination.currentPage} | 
+                Has Next: {pagination.hasNext ? 'Yes' : 'No'} | 
+                Has Prev: {pagination.hasPrevious ? 'Yes' : 'No'}
+              </div>
             </div>
 
             {/* Book list */}
@@ -357,15 +391,16 @@ const Catalog = () => {
               </div>
             )}
 
-            {/* Pagination */}
+            {/* POPRAWIONA PAGINACJA */}
             {pagination.totalPages > 1 && (
               <div className="flex justify-center items-center gap-2 py-8">
+                {/* Previous button */}
                 <button
-                  onClick={() => handlePageChange(pagination.page - 1)}
+                  onClick={() => handlePageChange(pagination.currentPage - 1)}
                   disabled={!pagination.hasPrevious}
-                  className={`px-4 py-2 rounded-lg ${
+                  className={`px-4 py-2 rounded-lg transition-colors ${
                     pagination.hasPrevious
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
                       : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   }`}
                 >
@@ -373,31 +408,27 @@ const Catalog = () => {
                 </button>
 
                 {/* Page numbers */}
-                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                  const pageNum = Math.max(1, pagination.page - 2) + i;
-                  if (pageNum > pagination.totalPages) return null;
-                  
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => handlePageChange(pageNum)}
-                      className={`px-4 py-2 rounded-lg ${
-                        pageNum === pagination.page
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-white text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
+                {generatePageNumbers().map(pageNum => (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      pageNum === pagination.currentPage
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
 
+                {/* Next button */}
                 <button
-                  onClick={() => handlePageChange(pagination.page + 1)}
+                  onClick={() => handlePageChange(pagination.currentPage + 1)}
                   disabled={!pagination.hasNext}
-                  className={`px-4 py-2 rounded-lg ${
+                  className={`px-4 py-2 rounded-lg transition-colors ${
                     pagination.hasNext
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
                       : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   }`}
                 >
