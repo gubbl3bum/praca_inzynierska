@@ -1,77 +1,445 @@
+// frontend/src/pages/Catalog.js - Poprawiona wersja z działającą paginacją
+
+import React, { useState, useEffect } from 'react';
 import BookCard from '../components/BookCard';
+import api from '../services/api';
 
 const Catalog = () => {
-  // Placeholder danych książek – do podmiany na dane z backendu
-  const books = [
-    {
-      title: 'Book 1',
-      author: 'Author A',
-      description: 'Short summary of the book.',
-      rating: '4.5',
-      category: 'Fiction',
-    },
-    {
-      title: 'Book 2',
-      author: 'Author B',
-      description: 'A thrilling story about life and mystery.',
-      rating: '4.0',
-      category: 'Mystery',
-    },
-    {
-      title: 'Book 3',
-      author: 'Author C',
-      description: 'An inspiring tale of hope and perseverance.',
-      rating: '4.7',
-      category: 'Drama',
-    },
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [filters, setFilters] = useState({
+    search: '',
+    category: '',
+    author: '',
+    year_from: '',
+    year_to: '',
+    rating_min: '',
+    sort: '-created_at'
+  });
+  
+  // POPRAWIONA PAGINACJA - używamy struktury z backendu
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    hasNext: false,
+    hasPrevious: false,
+    pageSize: 20
+  });
 
+  const sortOptions = [
+    { value: '-created_at', label: 'Newest First' },
+    { value: 'created_at', label: 'Oldest First' },
+    { value: '-average_rating', label: 'Highest Rated' },
+    { value: 'average_rating', label: 'Lowest Rated' },
+    { value: 'title', label: 'Title A-Z' },
+    { value: '-title', label: 'Title Z-A' },
+    { value: 'author', label: 'Author A-Z' },
+    { value: '-author', label: 'Author Z-A' }
   ];
 
+  // POPRAWIONA: Fetch books from API
+  const fetchBooks = async (page = 1) => {
+    try {
+      setLoading(true);
+      
+      // Prepare parameters
+      const params = {
+        page,
+        page_size: 20,
+        ...filters
+      };
+
+      // Remove empty filters
+      Object.keys(params).forEach(key => {
+        if (params[key] === '' || params[key] === null || params[key] === undefined) {
+          delete params[key];
+        }
+      });
+
+      console.log('Fetching books with params:', params);
+      const response = await api.books.getBooks(params);
+      
+      // POPRAWIONE: Sprawdź strukturę odpowiedzi
+      console.log('API response:', response);
+      
+      if (response.results) {
+        setBooks(response.results);
+        
+        // POPRAWIONE: Użyj danych z API do ustawienia paginacji
+        setPagination({
+          currentPage: response.current_page || page,
+          totalPages: response.num_pages || 1,
+          totalItems: response.count || 0,
+          hasNext: response.has_next || false,
+          hasPrevious: response.has_previous || false,
+          pageSize: response.page_size || 20,
+          nextPage: response.next_page,
+          previousPage: response.previous_page
+        });
+      } else {
+        // Fallback jeśli API zwraca inną strukturę
+        setBooks(Array.isArray(response) ? response : []);
+        setPagination(prev => ({ ...prev, currentPage: page }));
+      }
+
+      setError(null);
+    } catch (error) {
+      console.error('Error fetching books:', error);
+      setError('Failed to load book catalog');
+      setBooks([]);
+      setPagination(prev => ({ ...prev, currentPage: page }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load books when filters change
+  useEffect(() => {
+    fetchBooks(1);
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+  }, [filters]);
+
+  // Handle filter changes
+  const handleFilterChange = (name, value) => {
+    setFilters(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Handle search
+  const handleSearch = (e) => {
+    e.preventDefault();
+    fetchBooks(1);
+  };
+
+  // POPRAWIONA: Handle page change
+  const handlePageChange = (newPage) => {
+    console.log('Changing to page:', newPage);
+    fetchBooks(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Reset filters
+  const resetFilters = () => {
+    setFilters({
+      search: '',
+      category: '',
+      author: '',
+      year_from: '',
+      year_to: '',
+      rating_min: '',
+      sort: '-created_at'
+    });
+  };
+
+  const handleBookClick = (book) => {
+    console.log('Clicked book:', book);
+  };
+
+  // POPRAWIONA: Generate page numbers for pagination
+  const generatePageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    const start = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
+    const end = Math.min(pagination.totalPages, start + maxVisible - 1);
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    
+    return pages;
+  };
+
   return (
-    <div className="flex flex-col lg:flex-row px-4 py-12 gap-6 max-w-7xl mx-auto">
-      <aside className="lg:w-1/4 w-full bg-white p-6 rounded-2xl shadow-md sticky top-6 self-start">
-        <h2 className="text-2xl font-bold mb-6 text-blue-700">Filters</h2>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-8">
+        
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">Book Catalog</h1>
+          <p className="text-gray-600">
+            Browse and filter our collection 
+            {pagination.totalItems > 0 && ` of ${pagination.totalItems} books`}
+          </p>
+        </div>
 
-        {[
-          { label: 'Average Rating', placeholder: null, type: 'select', options: ['Any', '4★ and up', '3★ and up', '2★ and up'] },
-          { label: 'Categories', placeholder: 'e.g. Fantasy' },
-          { label: 'Authors', placeholder: 'e.g. Tolkien' },
-          { label: 'Keywords', placeholder: 'e.g. adventure' },
-          { label: 'Release Year', placeholder: 'e.g. 2020', type: 'number' },
-        ].map(({ label, placeholder, type = 'text', options }, i) => (
-          <div key={i} className="mb-4">
-            <label className="block font-medium mb-1 text-gray-700">{label}</label>
-            {type === 'select' ? (
-              <select className="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-                {options.map(opt => <option key={opt}>{opt}</option>)}
-              </select>
-            ) : (
+        {/* Filters */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">Filters</h2>
+          
+          {/* Search */}
+          <form onSubmit={handleSearch} className="mb-6">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  placeholder="Search books, authors..."
+                  value={filters.search}
+                  onChange={(e) => handleFilterChange('search', e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                🔍 Search
+              </button>
+            </div>
+          </form>
+
+          {/* Other filters */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            
+            {/* Category */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category
+              </label>
               <input
-                type={type}
-                className="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                placeholder={placeholder}
+                type="text"
+                placeholder="e.g. Fantasy, Sci-Fi"
+                value={filters.category}
+                onChange={(e) => handleFilterChange('category', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
               />
-            )}
+            </div>
+
+            {/* Author */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Author
+              </label>
+              <input
+                type="text"
+                placeholder="Author name"
+                value={filters.author}
+                onChange={(e) => handleFilterChange('author', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Year from */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Year From
+              </label>
+              <input
+                type="number"
+                placeholder="1950"
+                min="1900"
+                max="2024"
+                value={filters.year_from}
+                onChange={(e) => handleFilterChange('year_from', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Year to */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Year To
+              </label>
+              <input
+                type="number"
+                placeholder="2024"
+                min="1900"
+                max="2024"
+                value={filters.year_to}
+                onChange={(e) => handleFilterChange('year_to', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
           </div>
-        ))}
 
-        <button className="bg-blue-600 hover:bg-blue-700 text-white py-2 w-full rounded-lg font-semibold transition">
-          Apply Filters
-        </button>
-      </aside>
+          {/* Rating and sorting */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            {/* Minimum rating */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Min. Rating
+              </label>
+              <select
+                value={filters.rating_min}
+                onChange={(e) => handleFilterChange('rating_min', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Ratings</option>
+                <option value="4.5">4.5+ ⭐</option>
+                <option value="4.0">4.0+ ⭐</option>
+                <option value="3.5">3.5+ ⭐</option>
+                <option value="3.0">3.0+ ⭐</option>
+              </select>
+            </div>
 
-      <section className="lg:w-3/4 w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-        {books.map((book, idx) => (
-          <BookCard
-            key={idx}
-            title={book.title}
-            author={book.author}
-            description={book.description}
-            rating={book.rating}
-            category={book.category}
-          />
-        ))}
-      </section>
+            {/* Sort */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Sort By
+              </label>
+              <select
+                value={filters.sort}
+                onChange={(e) => handleFilterChange('sort', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              >
+                {sortOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reset */}
+            <div className="flex items-end">
+              <button
+                onClick={resetFilters}
+                className="w-full px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+              >
+                🔄 Reset Filters
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Loading */}
+        {loading && (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading books...</p>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
+            <div className="text-red-800 text-center">
+              <div className="text-4xl mb-2">⚠️</div>
+              <h3 className="text-lg font-semibold mb-2">Error Occurred</h3>
+              <p className="mb-4">{error}</p>
+              <button
+                onClick={() => fetchBooks(pagination.currentPage)}
+                className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Results */}
+        {!loading && !error && (
+          <>
+            {/* Results info */}
+            <div className="mb-6 flex justify-between items-center">
+              <p className="text-gray-600">
+                {books.length > 0 ? (
+                  <>
+                    Found {pagination.totalItems} books
+                    {pagination.totalPages > 1 && (
+                      <> (page {pagination.currentPage} of {pagination.totalPages})</>
+                    )}
+                  </>
+                ) : (
+                  'No results found'
+                )}
+              </p>
+              
+              {/* DEBUG INFO - usuń w produkcji */}
+              <div className="text-xs text-gray-400">
+                Page: {pagination.currentPage} | 
+                Has Next: {pagination.hasNext ? 'Yes' : 'No'} | 
+                Has Prev: {pagination.hasPrevious ? 'Yes' : 'No'}
+              </div>
+            </div>
+
+            {/* Book list */}
+            {books.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-8">
+                {books
+                  .filter(book => book && book.id)
+                  .map((book) => (
+                    <BookCard
+                      key={book.id}
+                      book={book}
+                      onClick={handleBookClick}
+                    />
+                  ))
+                }
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">📚</div>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                  No Books Found
+                </h3>
+                <p className="text-gray-500 mb-4">
+                  Try changing your filters or search terms
+                </p>
+                <button
+                  onClick={resetFilters}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            )}
+
+            {/* POPRAWIONA PAGINACJA */}
+            {pagination.totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 py-8">
+                {/* Previous button */}
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage - 1)}
+                  disabled={!pagination.hasPrevious}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    pagination.hasPrevious
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  ← Previous
+                </button>
+
+                {/* Page numbers */}
+                {generatePageNumbers().map(pageNum => (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      pageNum === pagination.currentPage
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+
+                {/* Next button */}
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage + 1)}
+                  disabled={!pagination.hasNext}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    pagination.hasNext
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+      </div>
     </div>
   );
 };

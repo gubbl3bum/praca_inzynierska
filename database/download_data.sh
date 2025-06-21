@@ -33,9 +33,9 @@ else
     # Utwórz przykładowe dane jeśli nie ma żadnych plików
     echo "No existing files found, creating sample data..."
     
-    # Utwórz Books.csv z przykładowymi danymi
+    # POPRAWIONE: Użyj nowych nazw kolumn (Title, Author zamiast Book-Title, Book-Author)
     cat > Books.csv << 'EOF'
-ISBN;Book-Title;Book-Author;Year-Of-Publication;Publisher;Image-URL-S;Image-URL-M;Image-URL-L
+ISBN;Title;Author;Year;Publisher;Image-URL-S;Image-URL-M;Image-URL-L
 9780141439518;Pride and Prejudice;Jane Austen;1813;Penguin Classics;http://images.amazon.com/images/P/0141439513.01.THUMBZZZ.jpg;http://images.amazon.com/images/P/0141439513.01.MZZZZZZZ.jpg;http://images.amazon.com/images/P/0141439513.01.L.jpg
 9780061120084;To Kill a Mockingbird;Harper Lee;1960;Harper Perennial;http://images.amazon.com/images/P/0061120081.01.THUMBZZZ.jpg;http://images.amazon.com/images/P/0061120081.01.MZZZZZZZ.jpg;http://images.amazon.com/images/P/0061120081.01.L.jpg
 9780451524935;1984;George Orwell;1949;Signet Classics;http://images.amazon.com/images/P/0451524934.01.THUMBZZZ.jpg;http://images.amazon.com/images/P/0451524934.01.MZZZZZZZ.jpg;http://images.amazon.com/images/P/0451524934.01.L.jpg

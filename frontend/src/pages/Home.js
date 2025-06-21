@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import BookCard from '../components/BookCard';
-
-const API_BASE_URL = 'http://localhost:8000/api';
+import api from '../services/api';
 
 const Home = () => {
   const [featuredBooks, setFeaturedBooks] = useState({
@@ -19,18 +18,13 @@ const Home = () => {
   const fetchFeaturedBooks = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/books/featured/`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
+      const data = await api.books.getFeatured();
       setFeaturedBooks(data);
       setError(null);
     } catch (err) {
       console.error('Error fetching featured books:', err);
-      setError('Failed to load books. Please try again later.');
+      const errorMessage = api.handleError(err, 'Failed to load books');
+      setError(errorMessage);
       
       // Fallback to sample data if API fails
       setFeaturedBooks({
@@ -43,16 +37,86 @@ const Home = () => {
     }
   };
 
-  // Fallback sample data
+  
+  const handleBookClick = (book) => {
+    console.log('Clicked book:', book);
+    // Tutaj możesz dodać navigation do szczegółów książki
+  };
+
+  // Fallback sample data with Open Library integration
   const sampleBooks = [
-    { id: 1, title: 'Book 1', author: 'Author 1', cover_image: null, categories: 'Fiction', average_rating: 4.5 },
-    { id: 2, title: 'Book 2', author: 'Author 2', cover_image: null, categories: 'Non-fiction', average_rating: 4.2 },
-    { id: 3, title: 'Book 3', author: 'Author 3', cover_image: null, categories: 'Science', average_rating: 4.7 },
-    { id: 4, title: 'Book 4', author: 'Author 4', cover_image: null, categories: 'History', average_rating: 4.0 },
-    { id: 5, title: 'Book 5', author: 'Author 5', cover_image: null, categories: 'Fantasy', average_rating: 4.3 },
-    { id: 6, title: 'Book 6', author: 'Author 6', cover_image: null, categories: 'Adventure', average_rating: 4.8 },
-    { id: 7, title: 'Book 7', author: 'Author 7', cover_image: null, categories: 'Mystery', average_rating: 4.1 },
-    { id: 8, title: 'Book 8', author: 'Author 8', cover_image: null, categories: 'Thriller', average_rating: 4.6 },
+    { 
+      id: 1, 
+      title: 'Pride and Prejudice', 
+      author: 'Jane Austen', 
+      isbn: '9780141439518',
+      categories: ['Fiction', 'Romance'], 
+      average_rating: 4.5,
+      open_library_id: '/works/OL66554W'
+    },
+    { 
+      id: 2, 
+      title: 'To Kill a Mockingbird', 
+      author: 'Harper Lee', 
+      isbn: '9780061120084',
+      categories: ['Fiction', 'Classic'], 
+      average_rating: 4.2,
+      open_library_id: '/works/OL4296W'
+    },
+    { 
+      id: 3, 
+      title: '1984', 
+      author: 'George Orwell', 
+      isbn: '9780451524935',
+      categories: ['Fiction', 'Dystopian'], 
+      average_rating: 4.7,
+      open_library_id: '/works/OL1168007W'
+    },
+    { 
+      id: 4, 
+      title: 'The Great Gatsby', 
+      author: 'F. Scott Fitzgerald', 
+      isbn: '9780743273565',
+      categories: ['Fiction', 'Classic'], 
+      average_rating: 4.0,
+      open_library_id: '/works/OL468431W'
+    },
+    { 
+      id: 5, 
+      title: 'The Hobbit', 
+      author: 'J.R.R. Tolkien', 
+      isbn: '9780547928227',
+      categories: ['Fantasy', 'Adventure'], 
+      average_rating: 4.3,
+      open_library_id: '/works/OL262758W'
+    },
+    { 
+      id: 6, 
+      title: 'Harry Potter and the Philosopher\'s Stone', 
+      author: 'J.K. Rowling', 
+      isbn: '9780439708180',
+      categories: ['Fantasy', 'Young Adult'], 
+      average_rating: 4.8,
+      open_library_id: '/works/OL82563W'
+    },
+    { 
+      id: 7, 
+      title: 'The Catcher in the Rye', 
+      author: 'J.D. Salinger', 
+      isbn: '9780316769488',
+      categories: ['Fiction', 'Coming of Age'], 
+      average_rating: 4.1,
+      open_library_id: '/works/OL3335401W'
+    },
+    { 
+      id: 8, 
+      title: 'One Hundred Years of Solitude', 
+      author: 'Gabriel García Márquez', 
+      isbn: '9780452284234',
+      categories: ['Fiction', 'Magical Realism'], 
+      average_rating: 4.6,
+      open_library_id: '/works/OL9756966W'
+    },
   ];
 
   const BookSection = ({ title, books, icon }) => (
@@ -62,21 +126,29 @@ const Home = () => {
         {title}
       </h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {books.map((book) => (
-          <BookCard 
-            key={book.id} 
-            id={book.id}
-            title={book.title}
-            author={book.author}
-            cover={book.cover_image}
-            description={book.description || `A great book by ${book.author}`}
-            rating={book.average_rating || '0.0'}
-            category={book.categories_list ? book.categories_list[0] : book.categories}
-          />
-        ))}
+        {books
+          .filter(book => book && book.id)
+          .map((book) => (
+            <BookCard
+              key={book.id}
+              book={book}  
+              onClick={handleBookClick}
+            />
+          ))
+        }
       </div>
     </section>
   );
+
+  const handleRefreshCovers = async () => {
+    try {
+      setLoading(true);
+      await api.books.refreshCovers(20); // Refresh covers for 20 books
+      await fetchFeaturedBooks(); // Reload data
+    } catch (err) {
+      console.error('Error refreshing covers:', err);
+    }
+  };
 
   if (loading) {
     return (
@@ -84,6 +156,7 @@ const Home = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading amazing books...</p>
+          <p className="text-sm text-gray-500 mt-2">Fetching covers from Open Library...</p>
         </div>
       </div>
     );
@@ -98,13 +171,32 @@ const Home = () => {
         </h1>
         <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
           Discover your next favorite book. Dive into fiction, explore science, or unravel a mystery.
+          Powered by Open Library for the best book covers and information.
         </p>
         
         {error && (
           <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mx-auto max-w-md mb-8">
             <p className="text-sm">{error}</p>
+            <button 
+              onClick={fetchFeaturedBooks}
+              className="text-blue-600 hover:text-blue-800 underline text-sm mt-2"
+            >
+              Try again
+            </button>
           </div>
         )}
+
+        {/* Admin controls for development
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mb-8">
+            <button
+              onClick={handleRefreshCovers}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm"
+            >
+              Refresh Book Covers from Open Library
+            </button>
+          </div>
+        )} */}
       </div>
 
       {/* Books Sections */}
@@ -138,8 +230,28 @@ const Home = () => {
           <div className="text-center py-12">
             <p className="text-gray-500 text-lg">No books available at the moment.</p>
             <p className="text-gray-400 text-sm mt-2">Please check back later or contact support.</p>
+            <button
+              onClick={fetchFeaturedBooks}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded mt-4"
+            >
+              Refresh
+            </button>
           </div>
         )}
+
+        {/* Open Library Attribution */}
+        <div className="text-center text-gray-500 text-sm mt-12 border-t pt-8">
+          <p>Book covers and information powered by 
+            <a 
+              href="https://openlibrary.org" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800 ml-1"
+            >
+              Open Library
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );
