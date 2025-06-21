@@ -27,15 +27,24 @@ services:
         condition: service_healthy
     volumes:
       - ./database/data:/data
+      - ./backend:/backend  # Mount backend do /backend zamiast /app
+    working_dir: /app  # Pracuj z /app (gdzie są skrypty)
     command: |
       sh -c "
         echo 'Waiting for database to be ready...'
-        sleep 10
-        echo 'Downloading data...'
-        ./download_data.sh || echo 'Download failed, checking existing files...'
+        sleep 5
+        
+        echo 'Add backend to PYTHONPATH...'
+        export PYTHONPATH=/backend:/app
+        
         echo 'Starting data import...'
         python data_import.py
-        echo 'Data import completed'
+        
+        echo '✅ Data import completed'
+        echo 'Check Django Admin: http://localhost:8000/admin/'
+        echo 'Check API: http://localhost:8000/api/books/'
+        
+        # Utrzymaj kontener żywy przez 30 sekund dla debugowania
         sleep 30
         echo 'Data importer finished successfully'
       "
@@ -51,8 +60,8 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
     depends_on:
-      db:
-        condition: service_healthy
+      data-importer:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
     restart: unless-stopped
@@ -77,5 +86,7 @@ services:
       - "8080:80"
     depends_on:
       - db
+    restart: unless-stopped
+
 volumes:
   postgres_data:

@@ -3,30 +3,101 @@ from django.contrib.postgres.fields import ArrayField
 from django.contrib.auth.models import AbstractUser
 from decimal import Decimal
 
-class PredictionRequest(models.Model):
-    feature1 = models.FloatField()
-    feature2 = models.FloatField()
-    feature3 = models.FloatField()
-    feature4 = models.FloatField()
+class Author(models.Model):
+    """Model dla autorów książek"""
+    name = models.CharField(max_length=300, unique=True)
+    biography = models.TextField(null=True, blank=True)
+    birth_year = models.IntegerField(null=True, blank=True)
+    death_year = models.IntegerField(null=True, blank=True)
+    nationality = models.CharField(max_length=100, null=True, blank=True)
+    website = models.URLField(null=True, blank=True)
+    
+    # Metadane
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'authors'
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+        ]
     
     def __str__(self):
-        return f"Prediction Request {self.id} ({self.created_at})"
+        return self.name
+    
+    @property
+    def book_count(self):
+        """Liczba książek autora"""
+        return self.books.count()
+    
+    @property
+    def average_rating(self):
+        """Średnia ocena książek autora"""
+        from django.db.models import Avg
+        result = self.books.aggregate(avg_rating=Avg('average_rating'))
+        return result['avg_rating'] if result['avg_rating'] else 0
 
-class PredictionResult(models.Model):
-    request = models.OneToOneField(PredictionRequest, on_delete=models.CASCADE, related_name='result')
-    prediction = models.FloatField()
-    confidence = models.FloatField()
+class Publisher(models.Model):
+    """Model dla wydawców"""
+    name = models.CharField(max_length=200, unique=True)
+    description = models.TextField(null=True, blank=True)
+    founded_year = models.IntegerField(null=True, blank=True)
+    country = models.CharField(max_length=100, null=True, blank=True)
+    website = models.URLField(null=True, blank=True)
+    
+    # Metadane
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'publishers'
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+        ]
     
     def __str__(self):
-        return f"Prediction Result {self.id} ({self.created_at})"
+        return self.name
+    
+    @property
+    def book_count(self):
+        """Liczba książek wydawcy"""
+        return self.books.count()
+
+class Category(models.Model):
+    """Model dla kategorii książek"""
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(null=True, blank=True)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subcategories')
+    
+    # Metadane
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'categories'
+        ordering = ['name']
+        verbose_name_plural = 'categories'
+    
+    def __str__(self):
+        return self.name
+    
+    @property
+    def book_count(self):
+        """Liczba książek w kategorii"""
+        return self.books.count()
 
 class Book(models.Model):
+    # Podstawowe informacje
     isbn = models.CharField(max_length=20, unique=True, null=True, blank=True)
     title = models.CharField(max_length=500)
-    author = models.CharField(max_length=300, null=True, blank=True)
-    publisher = models.CharField(max_length=200, null=True, blank=True)
+    
+    # ZNORMALIZOWANE RELACJE
+    authors = models.ManyToManyField(Author, related_name='books', blank=True)
+    publisher = models.ForeignKey(Publisher, on_delete=models.SET_NULL, null=True, blank=True, related_name='books')
+    categories = models.ManyToManyField(Category, related_name='books', blank=True)
+    
+    # Pozostałe informacje
     publication_year = models.IntegerField(null=True, blank=True)
     
     # Obrazki w różnych rozmiarach
@@ -36,9 +107,10 @@ class Book(models.Model):
     
     # Dodatkowe informacje
     description = models.TextField(null=True, blank=True)
-    categories = ArrayField(models.CharField(max_length=100), null=True, blank=True)
     page_count = models.IntegerField(null=True, blank=True)
     language = models.CharField(max_length=10, default='en', null=True, blank=True)
+    
+    # Oceny (denormalizowane dla wydajności)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
     ratings_count = models.IntegerField(default=0, null=True, blank=True)
     
@@ -52,19 +124,39 @@ class Book(models.Model):
     class Meta:
         db_table = 'books'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['isbn']),
+            models.Index(fields=['title']),
+            models.Index(fields=['publication_year']),
+            models.Index(fields=['average_rating']),
+            models.Index(fields=['created_at']),
+        ]
     
     def __str__(self):
-        return f"{self.title} by {self.author}"
+        authors_str = ", ".join([author.name for author in self.authors.all()[:2]])
+        if self.authors.count() > 2:
+            authors_str += f" (+{self.authors.count() - 2} more)"
+        return f"{self.title} by {authors_str}"
+    
+    @property
+    def primary_author(self):
+        """Zwraca pierwszego autora"""
+        return self.authors.first()
+    
+    @property
+    def author_names(self):
+        """Zwraca listę imion autorów"""
+        return [author.name for author in self.authors.all()]
+    
+    @property
+    def category_names(self):
+        """Zwraca listę nazw kategorii"""
+        return [category.name for category in self.categories.all()]
     
     @property
     def cover_image(self):
         """Zwraca najlepszy dostępny obrazek okładki"""
         return self.image_url_m or self.image_url_l or self.image_url_s
-    
-    @property
-    def categories_list(self):
-        """Zwraca kategorie jako listę"""
-        return self.categories if self.categories else []
     
     @property
     def open_library_cover_small(self):
@@ -99,6 +191,25 @@ class Book(models.Model):
             clean_isbn = self.isbn.replace('-', '').replace(' ', '')
             return f"https://openlibrary.org/isbn/{clean_isbn}"
         return None
+
+class PredictionRequest(models.Model):
+    feature1 = models.FloatField()
+    feature2 = models.FloatField()
+    feature3 = models.FloatField()
+    feature4 = models.FloatField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"Prediction Request {self.id} ({self.created_at})"
+
+class PredictionResult(models.Model):
+    request = models.OneToOneField(PredictionRequest, on_delete=models.CASCADE, related_name='result')
+    prediction = models.FloatField()
+    confidence = models.FloatField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"Prediction Result {self.id} ({self.created_at})"
 
 class User(models.Model):
     USER_TYPES = [
@@ -199,7 +310,7 @@ class Rating(models.Model):
 
 class Review(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews', 
-                            limit_choices_to={'user_type': 'app'})  # Tylko app users mogą pisać recenzje
+                            limit_choices_to={'user_type': 'app'})
     book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name='reviews')
     title = models.CharField(max_length=200, null=True, blank=True)
     content = models.TextField()
@@ -223,7 +334,7 @@ class ReadingList(models.Model):
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reading_lists',
-                            limit_choices_to={'user_type': 'app'})  # Tylko app users
+                            limit_choices_to={'user_type': 'app'})
     book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name='reading_lists')
     list_type = models.CharField(max_length=20, choices=LIST_TYPES)
     added_at = models.DateTimeField(auto_now_add=True)

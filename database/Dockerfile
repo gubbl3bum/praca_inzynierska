@@ -2,25 +2,24 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Zainstaluj wymagane pakiety systemowe
 RUN apt-get update && apt-get install -y \
-    wget \
-    unzip \
+    netcat-openbsd \
     postgresql-client \
+    curl \
+    unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Zainstaluj pakiety Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Skopiuj skrypty
-COPY . .
-
-# Nadaj uprawnienia wykonywania
+COPY data_import.py .
+COPY download_data.sh .
 RUN chmod +x download_data.sh
-RUN chmod +x data_import.py
-RUN chmod +x entrypoint.sh
 
-# Domyślnie uruchamiaj import
+RUN mkdir -p /data
+
+ENV PYTHONPATH=/app
+ENV DJANGO_SETTINGS_MODULE=config.settings
+
 CMD ["python", "data_import.py"]
