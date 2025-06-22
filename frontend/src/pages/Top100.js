@@ -109,10 +109,36 @@ const Top100 = () => {
     console.log('Clicked book:', book);
   };
 
-  // POPRAWIONA: Component for list view with positions
   const BookListItem = ({ book, position }) => {
     // Calculate real position based on pagination
     const realPosition = (pagination.currentPage - 1) * pagination.pageSize + position;
+    
+    // Funkcja do renderowania gwiazdek dla skali 0-10
+    const renderStars = (rating) => {
+      const stars = [];
+      // Konwertuj ocenę 0-10 na skalę 0-5 gwiazdek
+      const scaledRating = rating / 2;
+      const fullStars = Math.floor(scaledRating);
+      const hasHalfStar = scaledRating % 1 >= 0.5;
+      
+      // Pełne gwiazdki
+      for (let i = 0; i < fullStars; i++) {
+        stars.push(<span key={i} className="text-yellow-400 text-lg">★</span>);
+      }
+      
+      // Półgwiazdka
+      if (hasHalfStar) {
+        stars.push(<span key="half" className="text-yellow-400 text-lg">☆</span>);
+      }
+      
+      // Puste gwiazdki
+      const remainingStars = 5 - Math.ceil(scaledRating);
+      for (let i = 0; i < remainingStars; i++) {
+        stars.push(<span key={`empty-${i}`} className="text-gray-300 text-lg">☆</span>);
+      }
+      
+      return stars;
+    };
     
     return (
       <div 
@@ -154,24 +180,13 @@ const Top100 = () => {
             {book.author}
           </p>
           
-          {/* Rating */}
+          {/* ZAKTUALIZOWANY: Rating z nowym systemem 0-10 */}
           <div className="flex items-center gap-2">
-            <div className="flex">
-              {[...Array(5)].map((_, i) => (
-                <span
-                  key={i}
-                  className={`text-lg ${
-                    i < Math.floor(book.average_rating || 0)
-                      ? 'text-yellow-400'
-                      : 'text-gray-300'
-                  }`}
-                >
-                  ★
-                </span>
-              ))}
+            <div className="flex gap-0.5">
+              {renderStars(book.average_rating || 0)}
             </div>
             <span className="text-sm text-gray-600 font-medium">
-              {(book.average_rating || 0).toFixed(1)}
+              {(book.average_rating || 0).toFixed(1)}/10
             </span>
             {book.ratings_count > 0 && (
               <span className="text-sm text-gray-500">

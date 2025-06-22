@@ -270,10 +270,12 @@ const Catalog = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Ratings</option>
-                <option value="4.5">4.5+ ⭐</option>
-                <option value="4.0">4.0+ ⭐</option>
-                <option value="3.5">3.5+ ⭐</option>
-                <option value="3.0">3.0+ ⭐</option>
+                <option value="9.0">9.0+ ⭐ (Excellent)</option>
+                <option value="8.0">8.0+ ⭐ (Very Good)</option>
+                <option value="7.0">7.0+ ⭐ (Good)</option>
+                <option value="6.0">6.0+ ⭐ (Above Average)</option>
+                <option value="5.0">5.0+ ⭐ (Average)</option>
+                <option value="4.0">4.0+ ⭐ (Below Average)</option>
               </select>
             </div>
 
