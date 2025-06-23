@@ -1,20 +1,25 @@
+# backend/ml_api/urls.py
 from django.urls import path
 from . import views
 
+app_name = 'ml_api'
+
 urlpatterns = [
-    # ML API endpoints
-    path('predict/', views.prediction, name='prediction'),
-    path('history/', views.prediction_history, name='prediction_history'),
-    path('status/', views.api_status, name='api_status'),
+    # Lista wszystkich książek z filtrowaniem i paginacją
+    path('books/', views.book_list, name='book_list'),
     
-    # Books API endpoints
-    path('books/', views.books_list, name='books_list'),
-    path('books/featured/', views.books_featured, name='books_featured'),
-    path('books/search/', views.books_search, name='books_search'),
+    # Polecane książki 
+    path('books/featured/', views.featured_books, name='featured_books'),
+    
+    # Top książki 
+    path('books/top/', views.top_books, name='top_books'),
+    
+    # Szczegóły książki
     path('books/<int:book_id>/', views.book_detail, name='book_detail'),
-    path('books/top-rated/', views.books_top_rated, name='books_top_rated'), 
     
-    # Stats endpoints (nowe)
-    path('users/stats/', views.users_stats, name='users_stats'),
-    path('ratings/stats/', views.ratings_stats, name='ratings_stats'),
+    # Lista kategorii
+    path('categories/', views.categories_list, name='categories_list'),
+    
+    # Statystyki systemu
+    path('stats/', views.stats, name='stats'),
 ]

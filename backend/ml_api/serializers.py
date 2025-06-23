@@ -1,132 +1,127 @@
 from rest_framework import serializers
 from .models import (
-    PredictionRequest, PredictionResult, Book, Author, Publisher, Category
+    Book, Author, Publisher, Category, BookReview, 
+    UserBookList, UserBookListItem, User, UserPreferences,
+    PredictionRequest, PredictionResult
 )
 
 class AuthorSerializer(serializers.ModelSerializer):
     book_count = serializers.ReadOnlyField()
-    average_rating = serializers.ReadOnlyField()
     
     class Meta:
         model = Author
         fields = [
-            'id', 'name', 'biography', 'birth_year', 'death_year', 
-            'nationality', 'website', 'book_count', 'average_rating',
-            'created_at', 'updated_at'
+            'id', 'first_name', 'last_name', 'full_name', 
+            'book_count', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'full_name', 'created_at', 'updated_at']
 
 class AuthorSimpleSerializer(serializers.ModelSerializer):
-    """Uproszczony serializer dla autorów (do użycia w listach książek)"""
+    """Simple serializer for author lists"""
     class Meta:
         model = Author
-        fields = ['id', 'name']
+        fields = ['id', 'full_name', 'first_name', 'last_name']
 
 class PublisherSerializer(serializers.ModelSerializer):
     book_count = serializers.ReadOnlyField()
     
     class Meta:
         model = Publisher
-        fields = [
-            'id', 'name', 'description', 'founded_year', 'country', 
-            'website', 'book_count', 'created_at', 'updated_at'
-        ]
+        fields = ['id', 'name', 'book_count', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 class PublisherSimpleSerializer(serializers.ModelSerializer):
-    """Uproszczony serializer dla wydawców"""
+    """Simple serializer for publisher references"""
     class Meta:
         model = Publisher
-        fields = ['id', 'name', 'country']
+        fields = ['id', 'name']
 
 class CategorySerializer(serializers.ModelSerializer):
     book_count = serializers.ReadOnlyField()
-    subcategories = serializers.StringRelatedField(many=True, read_only=True)
     
     class Meta:
         model = Category
-        fields = [
-            'id', 'name', 'description', 'parent', 'subcategories',
-            'book_count', 'created_at'
-        ]
+        fields = ['id', 'name', 'book_count', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 class CategorySimpleSerializer(serializers.ModelSerializer):
-    """Uproszczony serializer dla kategorii"""
+    """Simple serializer for category lists"""
     class Meta:
         model = Category
         fields = ['id', 'name']
 
 class BookSerializer(serializers.ModelSerializer):
-    """Pełny serializer dla książek z wszystkimi relacjami"""
+    """Full book serializer with all relationships"""
     authors = AuthorSimpleSerializer(many=True, read_only=True)
-    publisher = PublisherSimpleSerializer(read_only=True)
     categories = CategorySimpleSerializer(many=True, read_only=True)
+    publisher = PublisherSimpleSerializer(read_only=True)
     
-    # Compatibility fields (dla zachowania kompatybilności z frontendem)
-    author = serializers.SerializerMethodField()
+    # Computed fields
     author_names = serializers.ReadOnlyField()
     category_names = serializers.ReadOnlyField()
-    
-    # Cover images
     cover_image = serializers.ReadOnlyField()
-    best_cover_small = serializers.SerializerMethodField()
-    best_cover_medium = serializers.SerializerMethodField()
-    best_cover_large = serializers.SerializerMethodField()
     
-    # Open Library
+    # Open Library integration
     open_library_cover_small = serializers.ReadOnlyField()
     open_library_cover_medium = serializers.ReadOnlyField()
     open_library_cover_large = serializers.ReadOnlyField()
     open_library_url = serializers.ReadOnlyField()
     
+    # Legacy compatibility fields
+    author = serializers.SerializerMethodField()
+    best_cover_small = serializers.SerializerMethodField()
+    best_cover_medium = serializers.SerializerMethodField()
+    best_cover_large = serializers.SerializerMethodField()
+    
     class Meta:
         model = Book
         fields = [
-            'id', 'isbn', 'title', 'authors', 'author', 'author_names',
-            'publisher', 'publication_year', 'image_url_s', 'image_url_m', 'image_url_l',
+            'id', 'title', 'description', 'keywords',
+            'price', 'publish_month', 'publish_year',
+            'authors', 'author', 'author_names',
+            'categories', 'category_names', 
+            'publisher',
+            'isbn', 'open_library_id',
+            'image_url_s', 'image_url_m', 'image_url_l',
             'cover_image', 'best_cover_small', 'best_cover_medium', 'best_cover_large',
-            'description', 'categories', 'category_names', 'page_count',
-            'language', 'average_rating', 'ratings_count',
-            'open_library_id', 'open_library_cover_small', 'open_library_cover_medium',
-            'open_library_cover_large', 'open_library_url',
+            'open_library_cover_small', 'open_library_cover_medium', 'open_library_cover_large',
+            'open_library_url',
+            'average_rating', 'ratings_count',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_author(self, obj):
-        """Compatibility: zwraca pierwszego autora jako string"""
+        """Legacy compatibility: return first author as string"""
         primary_author = obj.primary_author
-        return primary_author.name if primary_author else None
+        return primary_author.full_name if primary_author else None
     
     def get_best_cover_small(self, obj):
-        """Zwraca najlepszą okładkę małą"""
+        """Return best available small cover"""
         return (obj.open_library_cover_small or 
                 obj.image_url_s or None)
-
+    
     def get_best_cover_medium(self, obj):
-        """Zwraca najlepszą okładkę średnią"""
+        """Return best available medium cover"""
         return (obj.open_library_cover_medium or 
                 obj.image_url_m or 
                 obj.cover_image or None)
-
+    
     def get_best_cover_large(self, obj):
-        """Zwraca najlepszą okładkę dużą"""
+        """Return best available large cover"""
         return (obj.open_library_cover_large or 
                 obj.image_url_l or None)
 
 class BookListSerializer(serializers.ModelSerializer):
-    """Lekki serializer dla list książek"""
+    """Lightweight serializer for book lists"""
     authors = AuthorSimpleSerializer(many=True, read_only=True)
-    publisher = PublisherSimpleSerializer(read_only=True)
     categories = CategorySimpleSerializer(many=True, read_only=True)
+    publisher = PublisherSimpleSerializer(read_only=True)
     
-    # Compatibility fields
+    # Legacy compatibility
     author = serializers.SerializerMethodField()
     author_names = serializers.ReadOnlyField()
     category_names = serializers.ReadOnlyField()
-    
-    # Cover
     cover_image = serializers.ReadOnlyField()
     best_cover_medium = serializers.SerializerMethodField()
     open_library_url = serializers.ReadOnlyField()
@@ -134,25 +129,26 @@ class BookListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Book
         fields = [
-            'id', 'title', 'authors', 'author', 'author_names', 'isbn',
-            'publisher', 'cover_image', 'best_cover_medium',
-            'categories', 'category_names', 'average_rating', 'ratings_count',
-            'publication_year', 'open_library_url'
+            'id', 'title', 'authors', 'author', 'author_names',
+            'categories', 'category_names', 'publisher',
+            'isbn', 'cover_image', 'best_cover_medium',
+            'average_rating', 'ratings_count',
+            'publish_year', 'open_library_url'
         ]
     
     def get_author(self, obj):
-        """Compatibility: zwraca pierwszego autora jako string"""
+        """Legacy compatibility: return first author as string"""
         primary_author = obj.primary_author
-        return primary_author.name if primary_author else None
+        return primary_author.full_name if primary_author else None
     
     def get_best_cover_medium(self, obj):
-        """Zwraca najlepszą okładkę średnią"""
+        """Return best available medium cover"""
         return (obj.open_library_cover_medium or 
                 obj.image_url_m or 
                 obj.cover_image or None)
 
 class BookCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer do tworzenia/edycji książek"""
+    """Serializer for creating/updating books"""
     author_ids = serializers.ListField(
         child=serializers.IntegerField(), 
         write_only=True, 
@@ -168,10 +164,11 @@ class BookCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Book
         fields = [
-            'id', 'isbn', 'title', 'author_ids', 'publisher_id', 'category_ids',
-            'publication_year', 'image_url_s', 'image_url_m', 'image_url_l',
-            'description', 'page_count', 'language', 'average_rating', 'ratings_count',
-            'open_library_id'
+            'id', 'title', 'description', 'keywords',
+            'price', 'publish_month', 'publish_year',
+            'author_ids', 'category_ids', 'publisher_id',
+            'isbn', 'open_library_id',
+            'image_url_s', 'image_url_m', 'image_url_l'
         ]
         read_only_fields = ['id']
     
@@ -180,10 +177,10 @@ class BookCreateUpdateSerializer(serializers.ModelSerializer):
         category_ids = validated_data.pop('category_ids', [])
         publisher_id = validated_data.pop('publisher_id', None)
         
-        # Utwórz książkę
+        # Create book
         book = Book.objects.create(**validated_data)
         
-        # Dodaj relacje
+        # Add relationships
         if author_ids:
             book.authors.set(author_ids)
         if category_ids:
@@ -203,12 +200,12 @@ class BookCreateUpdateSerializer(serializers.ModelSerializer):
         category_ids = validated_data.pop('category_ids', None)
         publisher_id = validated_data.pop('publisher_id', None)
         
-        # Zaktualizuj podstawowe pola
+        # Update basic fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         
-        # Zaktualizuj relacje
+        # Update relationships
         if author_ids is not None:
             instance.authors.set(author_ids)
         if category_ids is not None:
@@ -224,28 +221,201 @@ class BookCreateUpdateSerializer(serializers.ModelSerializer):
         
         return instance
 
-class OpenLibraryBookSerializer(serializers.ModelSerializer):
-    """Serializer skupiony na danych z Open Library"""
+class UserSerializer(serializers.ModelSerializer):
+    """User serializer"""
+    full_name = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 
+            'full_name', 'created_at', 'last_login'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+class UserPreferencesSerializer(serializers.ModelSerializer):
+    """User preferences serializer"""
+    preferred_category_names = serializers.SerializerMethodField()
+    preferred_author_names = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = UserPreferences
+        fields = [
+            'id', 'preferred_categories', 'preferred_authors',
+            'preferred_category_names', 'preferred_author_names',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_preferred_category_names(self, obj):
+        """Get names of preferred categories"""
+        if obj.preferred_categories:
+            categories = Category.objects.filter(id__in=obj.preferred_categories)
+            return [cat.name for cat in categories]
+        return []
+    
+    def get_preferred_author_names(self, obj):
+        """Get names of preferred authors"""
+        if obj.preferred_authors:
+            authors = Author.objects.filter(id__in=obj.preferred_authors)
+            return [author.full_name for author in authors]
+        return []
+
+class BookReviewSerializer(serializers.ModelSerializer):
+    """Book review serializer"""
+    user = UserSerializer(read_only=True)
+    book = BookListSerializer(read_only=True)
+    user_id = serializers.IntegerField(write_only=True)
+    book_id = serializers.IntegerField(write_only=True)
+    
+    class Meta:
+        model = BookReview
+        fields = [
+            'id', 'user', 'book', 'user_id', 'book_id',
+            'rating', 'review_text', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def validate_rating(self, value):
+        """Validate rating is between 1 and 10"""
+        if not (1 <= value <= 10):
+            raise serializers.ValidationError("Rating must be between 1 and 10")
+        return value
+
+class BookReviewSimpleSerializer(serializers.ModelSerializer):
+    """Simple review serializer for lists"""
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
+    
+    class Meta:
+        model = BookReview
+        fields = [
+            'id', 'user_name', 'rating', 'review_text', 'created_at'
+        ]
+
+class UserBookListSerializer(serializers.ModelSerializer):
+    """User book list serializer"""
+    user = UserSerializer(read_only=True)
+    book_count = serializers.ReadOnlyField()
+    books = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = UserBookList
+        fields = [
+            'id', 'user', 'name', 'description', 'is_favorites',
+            'book_count', 'books', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_books(self, obj):
+        """Get books in this list"""
+        book_items = obj.items.select_related('book').all()[:10]  # Limit to 10 for performance
+        books = [item.book for item in book_items]
+        return BookListSerializer(books, many=True).data
+
+class UserBookListSimpleSerializer(serializers.ModelSerializer):
+    """Simple list serializer without books"""
+    book_count = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = UserBookList
+        fields = [
+            'id', 'name', 'description', 'is_favorites',
+            'book_count', 'created_at', 'updated_at'
+        ]
+
+class UserBookListItemSerializer(serializers.ModelSerializer):
+    """Book list item serializer"""
+    book = BookListSerializer(read_only=True)
+    list_name = serializers.CharField(source='list.name', read_only=True)
+    
+    class Meta:
+        model = UserBookListItem
+        fields = ['id', 'book', 'list_name', 'added_at']
+
+# Statistics serializers
+class BookStatisticsSerializer(serializers.Serializer):
+    """Book statistics serializer"""
+    total_books = serializers.IntegerField()
+    total_authors = serializers.IntegerField()
+    total_publishers = serializers.IntegerField()
+    total_categories = serializers.IntegerField()
+    average_rating = serializers.DecimalField(max_digits=3, decimal_places=2)
+    total_reviews = serializers.IntegerField()
+    
+    top_authors = serializers.ListField(
+        child=serializers.DictField(), 
+        required=False
+    )
+    top_categories = serializers.ListField(
+        child=serializers.DictField(), 
+        required=False
+    )
+    recent_books = BookListSerializer(many=True, required=False)
+
+class UserStatisticsSerializer(serializers.Serializer):
+    """User statistics serializer"""
+    total_users = serializers.IntegerField()
+    total_reviews = serializers.IntegerField()
+    total_lists = serializers.IntegerField()
+    average_rating = serializers.DecimalField(max_digits=3, decimal_places=2)
+    
+    most_active_users = serializers.ListField(
+        child=serializers.DictField(),
+        required=False
+    )
+    recent_reviews = BookReviewSimpleSerializer(many=True, required=False)
+
+# Search serializers
+class BookSearchSerializer(serializers.ModelSerializer):
+    """Book search results serializer"""
     authors = AuthorSimpleSerializer(many=True, read_only=True)
-    open_library_covers = serializers.SerializerMethodField()
-    open_library_url = serializers.ReadOnlyField()
+    categories = CategorySimpleSerializer(many=True, read_only=True)
+    publisher = PublisherSimpleSerializer(read_only=True)
+    
+    # Legacy compatibility and computed fields
+    author = serializers.SerializerMethodField()
+    best_cover_medium = serializers.SerializerMethodField()
+    
+    # Highlighting fields for search results
+    title_highlight = serializers.CharField(required=False)
+    description_highlight = serializers.CharField(required=False)
     
     class Meta:
         model = Book
         fields = [
-            'id', 'isbn', 'title', 'authors',
-            'open_library_id', 'open_library_url',
-            'open_library_covers', 'category_names'
+            'id', 'title', 'title_highlight',
+            'description', 'description_highlight',
+            'authors', 'author', 'categories', 'publisher',
+            'best_cover_medium', 'average_rating', 'ratings_count',
+            'publish_year'
         ]
     
-    def get_open_library_covers(self, obj):
-        """Zwraca wszystkie dostępne rozmiary okładek z Open Library"""
-        return {
-            'small': obj.open_library_cover_small,
-            'medium': obj.open_library_cover_medium,
-            'large': obj.open_library_cover_large
-        }
+    def get_author(self, obj):
+        """Return first author name"""
+        primary_author = obj.primary_author
+        return primary_author.full_name if primary_author else None
+    
+    def get_best_cover_medium(self, obj):
+        """Return best available medium cover"""
+        return (obj.open_library_cover_medium or 
+                obj.image_url_m or 
+                obj.cover_image or None)
 
+class AuthorSearchSerializer(serializers.ModelSerializer):
+    """Author search results serializer"""
+    book_count = serializers.ReadOnlyField()
+    recent_books = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Author
+        fields = ['id', 'full_name', 'book_count', 'recent_books']
+    
+    def get_recent_books(self, obj):
+        """Get recent books by this author"""
+        recent_books = obj.books.order_by('-created_at')[:3]
+        return BookListSerializer(recent_books, many=True).data
+
+# Legacy ML prediction serializers (preserved)
 class PredictionRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = PredictionRequest
@@ -259,3 +429,36 @@ class PredictionResultSerializer(serializers.ModelSerializer):
         model = PredictionResult
         fields = ['id', 'request', 'prediction', 'confidence', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+# Recommendation serializers
+class BookRecommendationSerializer(serializers.ModelSerializer):
+    """Book recommendation serializer"""
+    authors = AuthorSimpleSerializer(many=True, read_only=True)
+    categories = CategorySimpleSerializer(many=True, read_only=True)
+    
+    # Recommendation specific fields
+    recommendation_score = serializers.DecimalField(max_digits=5, decimal_places=4, required=False)
+    recommendation_reason = serializers.CharField(required=False)
+    
+    # Legacy compatibility
+    author = serializers.SerializerMethodField()
+    best_cover_medium = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Book
+        fields = [
+            'id', 'title', 'authors', 'author', 'categories',
+            'best_cover_medium', 'average_rating', 'ratings_count',
+            'recommendation_score', 'recommendation_reason'
+        ]
+    
+    def get_author(self, obj):
+        """Return first author name"""
+        primary_author = obj.primary_author
+        return primary_author.full_name if primary_author else None
+    
+    def get_best_cover_medium(self, obj):
+        """Return best available medium cover"""
+        return (obj.open_library_cover_medium or 
+                obj.image_url_m or 
+                obj.cover_image or None)
