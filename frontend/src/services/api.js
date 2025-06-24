@@ -18,7 +18,8 @@ const apiCall = async (endpoint, options = {}) => {
     const response = await fetch(url, config);
     
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
     }
     
     const data = await response.json();
@@ -32,62 +33,84 @@ const apiCall = async (endpoint, options = {}) => {
 
 // Books API functions
 export const booksAPI = {
-  // Get featured books for home page
-  getFeatured: () => apiCall('/books/featured/'),
+  // Get featured books for home page - DOSTOSOWANE DO BACKEND
+  getFeatured: async () => {
+    const response = await apiCall('/books/featured/');
+    // Backend zwraca obiekt z top_rated, recent, popular
+    return {
+      top_rated: response.top_rated || [],
+      recent: response.recent || [],
+      popular: response.popular || []
+    };
+  },
   
-  // POPRAWIONA: Get all books with pagination and filters
+  // Get all books with pagination and filters - DOSTOSOWANE
   getBooks: (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     const endpoint = queryString ? `/books/?${queryString}` : '/books/';
     return apiCall(endpoint);
   },
   
-  // NOWA: Get top rated books with pagination
+  // Get top rated books with pagination - DOSTOSOWANE
   getTopRated: (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     const endpoint = queryString ? `/books/top-rated/?${queryString}` : '/books/top-rated/';
     return apiCall(endpoint);
   },
   
-  // Get single book details
+  // Get single book details - DOSTOSOWANE
   getBook: (id) => apiCall(`/books/${id}/`),
   
-  // Search books
+  // Search books - FALLBACK do głównego endpointu books
   searchBooks: (query, params = {}) => {
-    const allParams = { q: query, ...params };
+    const allParams = { search: query, ...params };
     const queryString = new URLSearchParams(allParams).toString();
-    return apiCall(`/books/search/?${queryString}`);
+    return apiCall(`/books/?${queryString}`);
   },
   
-  // Get Open Library information for a book
-  getOpenLibraryInfo: (bookId) => apiCall(`/books/${bookId}/open-library/`),
+  // Legacy compatibility functions
+  getOpenLibraryInfo: (bookId) => {
+    console.warn('getOpenLibraryInfo not implemented yet');
+    return Promise.resolve({});
+  },
   
-  // Get Open Library covers for ISBN
-  getOpenLibraryCovers: (isbn) => apiCall(`/open-library/covers/${isbn}/`),
+  getOpenLibraryCovers: (isbn) => {
+    console.warn('getOpenLibraryCovers not implemented yet');
+    return Promise.resolve({});
+  },
   
-  // Refresh covers for books
-  refreshCovers: (limit = 50) => apiCall('/books/refresh-covers/', {
-    method: 'POST',
-    body: JSON.stringify({ limit })
-  })
+  refreshCovers: (limit = 50) => {
+    console.warn('refreshCovers not implemented yet');
+    return Promise.resolve({});
+  }
 };
 
-// ML API functions
-export const mlAPI = {
-  // Make prediction
-  predict: (features) => apiCall('/predict/', {
-    method: 'POST',
-    body: JSON.stringify(features)
-  }),
-  
-  // Get prediction history
-  getHistory: () => apiCall('/history/'),
-  
-  // Get API status
+// Categories API
+export const categoriesAPI = {
+  getCategories: () => apiCall('/categories/')
+};
+
+// Status API
+export const statusAPI = {
   getStatus: () => apiCall('/status/')
 };
 
-// POPRAWIONE: Pagination utilities
+// ML API functions (zachowane dla kompatybilności)
+export const mlAPI = {
+  predict: (features) => {
+    console.warn('ML prediction not implemented yet');
+    return Promise.resolve({});
+  },
+  
+  getHistory: () => {
+    console.warn('ML history not implemented yet');
+    return Promise.resolve([]);
+  },
+  
+  getStatus: () => statusAPI.getStatus()
+};
+
+// Pagination utilities - POPRAWIONE
 export const paginationUtils = {
   // Create pagination info from API response
   createPaginationInfo: (apiResponse) => {
@@ -117,7 +140,7 @@ export const paginationUtils = {
   }
 };
 
-// Open Library utilities (bez zmian)
+// Open Library utilities (zachowane)
 export const openLibraryUtils = {
   // Generate cover URLs for different sizes
   getCoverUrls: (isbn) => {
@@ -157,10 +180,11 @@ export const openLibraryUtils = {
   // Get best available cover from multiple sources
   getBestCover: async (book) => {
     const candidates = [
+      book.cover_image_url,
+      book.best_cover_medium,
       book.image_url_m,
       book.image_url_l,
       book.image_url_s,
-      book.best_cover_medium,
       book.best_cover_large,
       book.best_cover_small
     ].filter(Boolean);
@@ -175,35 +199,101 @@ export const openLibraryUtils = {
   }
 };
 
-// Error handling helper (bez zmian)
+// Error handling helper - POPRAWIONE
 export const handleApiError = (error, fallbackMessage = 'Something went wrong') => {
+  console.error('API Error:', error);
+  
   if (error.message.includes('HTTP error')) {
     const status = error.message.match(/status: (\d+)/)?.[1];
     switch (status) {
       case '404':
         return 'Not found';
       case '500':
-        return 'Server error';
+        return 'Server error - please try again later';
       case '403':
         return 'Access denied';
+      case '400':
+        return 'Bad request - please check your input';
       default:
-        return `Error ${status}`;
+        return `Error ${status} - please try again`;
     }
   }
   
   if (error.message.includes('Failed to fetch')) {
-    return 'Network error - please check your connection';
+    return 'Network error - please check your connection and try again';
+  }
+  
+  if (error.message.includes('NetworkError')) {
+    return 'Cannot connect to server - please check if the backend is running';
   }
   
   return error.message || fallbackMessage;
 };
 
+// Data transformation utilities
+export const dataUtils = {
+  // Normalize book data from different API responses
+  normalizeBook: (book) => {
+    if (!book) return null;
+    
+    return {
+      id: book.id,
+      title: book.title || 'Unknown Title',
+      authors: book.authors || book.author || 'Unknown Author',
+      author: book.author || (book.authors ? (Array.isArray(book.authors) ? book.authors[0] : book.authors) : 'Unknown Author'),
+      description: book.description,
+      categories: book.categories || book.category_names || [],
+      average_rating: Number(book.average_rating || 0),
+      ratings_count: Number(book.ratings_count || 0),
+      price: book.price,
+      publish_year: book.publish_year || book.publication_year,
+      publication_year: book.publication_year || book.publish_year,
+      cover_image_url: book.cover_image_url,
+      best_cover_medium: book.best_cover_medium || book.cover_image_url,
+      best_cover_large: book.best_cover_large || book.cover_image_url,
+      image_url_m: book.image_url_m || book.cover_image_url,
+      image_url_l: book.image_url_l || book.cover_image_url,
+      isbn: book.isbn,
+      publisher: book.publisher,
+      created_at: book.created_at,
+      updated_at: book.updated_at
+    };
+  },
+  
+  // Normalize API response structure
+  normalizeApiResponse: (response) => {
+    // Handle different response structures
+    if (response.results) {
+      return {
+        ...response,
+        results: response.results.map(dataUtils.normalizeBook)
+      };
+    }
+    
+    if (Array.isArray(response)) {
+      return response.map(dataUtils.normalizeBook);
+    }
+    
+    if (response.books) {
+      return {
+        ...response,
+        books: response.books.map(dataUtils.normalizeBook)
+      };
+    }
+    
+    return response;
+  }
+};
+
 // Export default API object
 const api = {
   books: booksAPI,
+  categories: categoriesAPI,
+  status: statusAPI,
   ml: mlAPI,
   openLibrary: openLibraryUtils,
   pagination: paginationUtils,
+  data: dataUtils,
   handleError: handleApiError
 };
 
