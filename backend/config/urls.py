@@ -1,9 +1,11 @@
-# backend/config/urls.py - CLEAN EMERGENCY VERSION
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from django.core.paginator import Paginator
+from django.db.models import Q, Avg, Count
+import json
 
 def health_check(request):
     """Simple health check endpoint"""
@@ -14,75 +16,160 @@ def health_check(request):
 
 @api_view(['GET'])
 def featured_books(request):
-    """Polecane książki - działające emergency endpoint"""
+    """Polecane książki dla strony głównej"""
     try:
         from ml_api.models import Book
         
-        # Pobierz pierwsze 12 książek jako featured
-        books = Book.objects.all()[:12]
+        # Top rated books (first 4)
+        top_rated = Book.objects.annotate(
+            avg_rating=Avg('reviews__rating'),
+            review_count=Count('reviews')
+        ).filter(review_count__gte=1).order_by('-avg_rating')[:4]
         
-        book_data = []
-        for book in books:
-            book_data.append({
+        # Recent books (first 4)
+        recent = Book.objects.order_by('-created_at')[:4]
+        
+        # Popular books (most reviews, first 4)  
+        popular = Book.objects.annotate(
+            review_count=Count('reviews')
+        ).order_by('-review_count')[:4]
+        
+        def book_to_dict(book):
+            return {
                 'id': book.id,
                 'title': book.title,
-                'authors': book.author_names if hasattr(book, 'author_names') else 'Unknown',
+                'authors': book.author_names,
                 'price': str(book.price) if book.price else None,
                 'publish_year': book.publish_year,
-                'average_rating': book.average_rating if hasattr(book, 'average_rating') else 0,
-                'ratings_count': book.ratings_count if hasattr(book, 'ratings_count') else 0,
+                'average_rating': float(book.average_rating) if book.average_rating else 0,
+                'ratings_count': book.ratings_count,
                 'description': (book.description[:200] + '...') if book.description and len(book.description) > 200 else book.description,
                 'cover_image_url': book.cover_image_url,
                 'isbn': book.isbn,
-            })
+                'categories': [cat.name for cat in book.categories.all()],
+            }
         
         return Response({
             'status': 'success',
-            'count': len(book_data),
-            'books': book_data
+            'top_rated': [book_to_dict(book) for book in top_rated],
+            'recent': [book_to_dict(book) for book in recent], 
+            'popular': [book_to_dict(book) for book in popular]
         })
     except Exception as e:
         return Response({
             'status': 'error',
-            'message': str(e)
+            'message': str(e),
+            'top_rated': [],
+            'recent': [],
+            'popular': []
         }, status=500)
 
 @api_view(['GET'])
 def book_list(request):
-    """Lista książek z paginacją"""
+    """Lista książek z paginacją i filtrowaniem"""
     try:
         from ml_api.models import Book
         
+        # Parametry z requesta
         page = int(request.GET.get('page', 1))
-        limit = int(request.GET.get('limit', 20))
+        page_size = int(request.GET.get('page_size', 20))
+        search = request.GET.get('search', '').strip()
+        category = request.GET.get('category', '').strip()
+        author = request.GET.get('author', '').strip()
+        year_from = request.GET.get('year_from', '').strip()
+        year_to = request.GET.get('year_to', '').strip()
+        rating_min = request.GET.get('rating_min', '').strip()
+        sort = request.GET.get('sort', '-created_at')
         
-        start = (page - 1) * limit
-        end = start + limit
+        # Budowanie query
+        books = Book.objects.all()
         
-        books = Book.objects.all()[start:end]
-        total_count = Book.objects.count()
+        # Filtrowanie
+        if search:
+            books = books.filter(
+                Q(title__icontains=search) | 
+                Q(description__icontains=search) |
+                Q(bookauthor__author__first_name__icontains=search) |
+                Q(bookauthor__author__last_name__icontains=search)
+            )
         
-        book_data = []
-        for book in books:
-            book_data.append({
+        if category:
+            books = books.filter(bookcategory__category__name__icontains=category)
+            
+        if author:
+            books = books.filter(
+                Q(bookauthor__author__first_name__icontains=author) |
+                Q(bookauthor__author__last_name__icontains=author)
+            )
+            
+        if year_from:
+            try:
+                books = books.filter(publish_year__gte=int(year_from))
+            except ValueError:
+                pass
+                
+        if year_to:
+            try:
+                books = books.filter(publish_year__lte=int(year_to))
+            except ValueError:
+                pass
+                
+        if rating_min:
+            try:
+                min_rating = float(rating_min)
+                books = books.annotate(avg_rating=Avg('reviews__rating')).filter(avg_rating__gte=min_rating)
+            except ValueError:
+                pass
+        
+        # Usuń duplikaty
+        books = books.distinct()
+        
+        # Sortowanie
+        if sort == 'title':
+            books = books.order_by('title')
+        elif sort == '-title':
+            books = books.order_by('-title')
+        elif sort == 'author':
+            books = books.order_by('bookauthor__author__last_name')
+        elif sort == '-author':
+            books = books.order_by('-bookauthor__author__last_name')
+        elif sort == 'average_rating':
+            books = books.annotate(avg_rating=Avg('reviews__rating')).order_by('avg_rating')
+        elif sort == '-average_rating':
+            books = books.annotate(avg_rating=Avg('reviews__rating')).order_by('-avg_rating')
+        else:
+            books = books.order_by(sort)
+        
+        # Paginacja
+        paginator = Paginator(books, page_size)
+        page_obj = paginator.get_page(page)
+        
+        def book_to_dict(book):
+            return {
                 'id': book.id,
                 'title': book.title,
-                'authors': book.author_names if hasattr(book, 'author_names') else 'Unknown',
+                'authors': book.author_names,
                 'price': str(book.price) if book.price else None,
                 'publish_year': book.publish_year,
-                'average_rating': book.average_rating if hasattr(book, 'average_rating') else 0,
-                'ratings_count': book.ratings_count if hasattr(book, 'ratings_count') else 0,
+                'average_rating': float(book.average_rating) if book.average_rating else 0,
+                'ratings_count': book.ratings_count,
                 'description': (book.description[:200] + '...') if book.description and len(book.description) > 200 else book.description,
-            })
+                'cover_image_url': book.cover_image_url,
+                'isbn': book.isbn,
+                'categories': [cat.name for cat in book.categories.all()],
+            }
         
         return Response({
             'status': 'success',
-            'count': len(book_data),
-            'total': total_count,
-            'page': page,
-            'limit': limit,
-            'has_next': end < total_count,
-            'books': book_data
+            'results': [book_to_dict(book) for book in page_obj],
+            'count': paginator.count,
+            'num_pages': paginator.num_pages,
+            'current_page': page,
+            'page_size': page_size,
+            'has_next': page_obj.has_next(),
+            'has_previous': page_obj.has_previous(),
+            'next_page': page_obj.next_page_number() if page_obj.has_next() else None,
+            'previous_page': page_obj.previous_page_number() if page_obj.has_previous() else None,
         })
     except Exception as e:
         return Response({
@@ -91,31 +178,117 @@ def book_list(request):
         }, status=500)
 
 @api_view(['GET'])
-def top_books(request):
-    """Top 200 książek"""
+def top_rated_books(request):
+    """Top książki z najlepszymi ocenami"""
     try:
         from ml_api.models import Book
         
-        # Książki posortowane według roku publikacji (najnowsze = top)
-        books = Book.objects.filter(publish_year__isnull=False).order_by('-publish_year')[:200]
+        # Parametry
+        page = int(request.GET.get('page', 1))
+        page_size = int(request.GET.get('page_size', 20))
+        filter_type = request.GET.get('filter', 'all')
         
-        book_data = []
-        for book in books:
-            book_data.append({
+        # Budowanie query - tylko książki z ocenami
+        books = Book.objects.annotate(
+            avg_rating=Avg('reviews__rating'),
+            review_count=Count('reviews')
+        ).filter(review_count__gte=1)
+        
+        # Filtrowanie czasowe
+        if filter_type == 'recent':
+            books = books.filter(publish_year__gte=2019)  # Ostatnie 5 lat
+        elif filter_type == 'classic':
+            books = books.filter(publish_year__lt=2000)
+        
+        # Sortowanie według średniej oceny
+        books = books.order_by('-avg_rating', '-review_count')
+        
+        # Paginacja
+        paginator = Paginator(books, page_size)
+        page_obj = paginator.get_page(page)
+        
+        def book_to_dict(book):
+            return {
                 'id': book.id,
                 'title': book.title,
-                'authors': book.author_names if hasattr(book, 'author_names') else 'Unknown',
+                'authors': book.author_names,
+                'author': book.author_names.split(',')[0] if book.author_names else 'Unknown',
                 'price': str(book.price) if book.price else None,
                 'publish_year': book.publish_year,
-                'average_rating': book.average_rating if hasattr(book, 'average_rating') else 0,
-                'ratings_count': book.ratings_count if hasattr(book, 'ratings_count') else 0,
-            })
+                'publication_year': book.publish_year,  # alias
+                'average_rating': float(book.avg_rating) if hasattr(book, 'avg_rating') and book.avg_rating else 0,
+                'ratings_count': book.review_count if hasattr(book, 'review_count') else 0,
+                'description': (book.description[:200] + '...') if book.description and len(book.description) > 200 else book.description,
+                'cover_image_url': book.cover_image_url,
+                'best_cover_medium': book.cover_image_url,
+                'cover_url': book.cover_image_url,  # alias
+                'image_url_m': book.cover_image_url,  # alias
+                'isbn': book.isbn,
+                'categories': [cat.name for cat in book.categories.all()],
+                'publisher': book.publisher.name if book.publisher else None,
+            }
         
         return Response({
             'status': 'success',
-            'count': len(book_data),
-            'books': book_data
+            'results': [book_to_dict(book) for book in page_obj],
+            'count': paginator.count,
+            'num_pages': paginator.num_pages,
+            'current_page': page,
+            'page_size': page_size,
+            'has_next': page_obj.has_next(),
+            'has_previous': page_obj.has_previous(),
+            'next_page': page_obj.next_page_number() if page_obj.has_next() else None,
+            'previous_page': page_obj.previous_page_number() if page_obj.has_previous() else None,
         })
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+@api_view(['GET'])
+def book_detail(request, book_id):
+    """Szczegóły pojedynczej książki"""
+    try:
+        from ml_api.models import Book
+        
+        book = Book.objects.get(id=book_id)
+        
+        book_data = {
+            'id': book.id,
+            'title': book.title,
+            'authors': [{'name': author.full_name} for author in book.authors.all()],
+            'author': book.author_names,
+            'description': book.description,
+            'keywords': book.keywords,
+            'price': str(book.price) if book.price else None,
+            'publish_year': book.publish_year,
+            'publication_year': book.publish_year,
+            'publish_month': book.publish_month,
+            'average_rating': float(book.average_rating) if book.average_rating else 0,
+            'ratings_count': book.ratings_count,
+            'cover_image_url': book.cover_image_url,
+            'best_cover_large': book.cover_image_url,
+            'best_cover_medium': book.cover_image_url,
+            'image_url_l': book.cover_image_url,
+            'image_url_m': book.cover_image_url,
+            'isbn': book.isbn,
+            'categories': [cat.name for cat in book.categories.all()],
+            'category_names': [cat.name for cat in book.categories.all()],
+            'publisher': {'name': book.publisher.name} if book.publisher else None,
+            'created_at': book.created_at,
+            'updated_at': book.updated_at,
+        }
+        
+        return Response({
+            'status': 'success',
+            **book_data
+        })
+    except Book.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'Book not found'
+        }, status=404)
     except Exception as e:
         return Response({
             'status': 'error',
@@ -128,7 +301,7 @@ def categories_list(request):
     try:
         from ml_api.models import Category
         
-        categories = Category.objects.all()[:50]  # Pierwsze 50 kategorii
+        categories = Category.objects.all()[:50]
         
         category_data = []
         for cat in categories:
@@ -174,11 +347,10 @@ urlpatterns = [
     path('api/status/', api_status, name='api_status'),
     path('api/health/', health_check, name='api_health'),
     
-    # WORKING ENDPOINTS - bezpośrednio w głównym urls.py
+    # WORKING ENDPOINTS
     path('api/books/featured/', featured_books, name='featured_books'),
-    path('api/books/top/', top_books, name='top_books'), 
+    path('api/books/top-rated/', top_rated_books, name='top_rated_books'),  
+    path('api/books/<int:book_id>/', book_detail, name='book_detail'),  
     path('api/books/', book_list, name='book_list'),
     path('api/categories/', categories_list, name='categories_list'),
-    
-
 ]
