@@ -1,51 +1,97 @@
 from django.contrib import admin
-from .models import PredictionRequest, PredictionResult, Book
+from .models import (
+    Book, Author, Publisher, Category, BookAuthor, BookCategory,
+    User, UserPreferences, BookReview
+)
 
-@admin.register(PredictionRequest)
-class PredictionRequestAdmin(admin.ModelAdmin):
-    list_display = ['id', 'feature1', 'feature2', 'feature3', 'feature4', 'created_at']
-    list_filter = ['created_at']
-    ordering = ['-created_at']
+@admin.register(Author)
+class AuthorAdmin(admin.ModelAdmin):
+    list_display = ('full_name', 'first_name', 'last_name', 'created_at')
+    search_fields = ('first_name', 'last_name')
+    list_filter = ('created_at',)
+    ordering = ('last_name', 'first_name')
 
-@admin.register(PredictionResult)
-class PredictionResultAdmin(admin.ModelAdmin):
-    list_display = ['id', 'prediction', 'confidence', 'created_at']
-    list_filter = ['created_at']
-    ordering = ['-created_at']
+@admin.register(Publisher)
+class PublisherAdmin(admin.ModelAdmin):
+    list_display = ('name', 'created_at')
+    search_fields = ('name',)
+    list_filter = ('created_at',)
+    ordering = ('name',)
+
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'created_at')
+    search_fields = ('name',)
+    list_filter = ('created_at',)
+    ordering = ('name',)
+
+class BookAuthorInline(admin.TabularInline):
+    model = BookAuthor
+    extra = 1
+
+class BookCategoryInline(admin.TabularInline):
+    model = BookCategory
+    extra = 1
 
 @admin.register(Book)
 class BookAdmin(admin.ModelAdmin):
-    list_display = ['id', 'title', 'author', 'isbn', 'publication_year', 'average_rating', 'has_open_library_id']
-    list_filter = ['publication_year', 'language', 'created_at']
-    search_fields = ['title', 'author', 'isbn', 'open_library_id']
-    ordering = ['-created_at']
-    readonly_fields = ['created_at', 'updated_at']
+    list_display = ('title', 'author_names', 'publisher', 'price', 'publish_year', 'average_rating', 'ratings_count')
+    search_fields = ('title', 'description')
+    list_filter = ('publish_year', 'publisher', 'categories', 'created_at')
+    filter_horizontal = []
+    inlines = [BookAuthorInline, BookCategoryInline]
+    ordering = ('-created_at',)
     
-    fieldsets = (
-        ('Basic Information', {
-            'fields': ('title', 'author', 'isbn', 'publisher', 'publication_year')
-        }),
-        ('Cover Images', {
-            'fields': ('image_url_s', 'image_url_m', 'image_url_l'),
-            'description': 'URLs to book cover images'
-        }),
-        ('Open Library Integration', {
-            'fields': ('open_library_id',),
-            'description': 'Open Library data'
-        }),
-        ('Content', {
-            'fields': ('description', 'categories', 'page_count', 'language')
-        }),
-        ('Ratings', {
-            'fields': ('average_rating', 'ratings_count')
-        }),
-        ('Metadata', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        })
-    )
+    def author_names(self, obj):
+        return obj.author_names
+    author_names.short_description = 'Authors'
     
-    def has_open_library_id(self, obj):
-        return bool(obj.open_library_id)
-    has_open_library_id.boolean = True
-    has_open_library_id.short_description = 'Has OL ID'
+    def average_rating(self, obj):
+        return obj.average_rating
+    average_rating.short_description = 'Avg Rating'
+    
+    def ratings_count(self, obj):
+        return obj.ratings_count
+    ratings_count.short_description = 'Reviews'
+
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'email', 'first_name', 'last_name', 'created_at')
+    search_fields = ('username', 'email', 'first_name', 'last_name')
+    list_filter = ('created_at',)
+    ordering = ('-created_at',)
+
+@admin.register(UserPreferences)
+class UserPreferencesAdmin(admin.ModelAdmin):
+    list_display = ('user', 'get_preferred_categories_count', 'get_preferred_authors_count', 'created_at')
+    search_fields = ('user__username', 'user__email')
+    list_filter = ('created_at',)
+    ordering = ('-created_at',)
+    
+    def get_preferred_categories_count(self, obj):
+        return len(obj.preferred_categories) if obj.preferred_categories else 0
+    get_preferred_categories_count.short_description = 'Categories Count'
+    
+    def get_preferred_authors_count(self, obj):
+        return len(obj.preferred_authors) if obj.preferred_authors else 0
+    get_preferred_authors_count.short_description = 'Authors Count'
+
+@admin.register(BookReview)
+class BookReviewAdmin(admin.ModelAdmin):
+    list_display = ('user', 'book', 'rating', 'created_at')
+    search_fields = ('user__username', 'book__title', 'review_text')
+    list_filter = ('rating', 'created_at')
+    ordering = ('-created_at',)
+
+# Inline relationships
+@admin.register(BookAuthor)
+class BookAuthorAdmin(admin.ModelAdmin):
+    list_display = ('book', 'author', 'created_at')
+    search_fields = ('book__title', 'author__first_name', 'author__last_name')
+    list_filter = ('created_at',)
+
+@admin.register(BookCategory)
+class BookCategoryAdmin(admin.ModelAdmin):
+    list_display = ('book', 'category', 'created_at')
+    search_fields = ('book__title', 'category__name')
+    list_filter = ('created_at',)

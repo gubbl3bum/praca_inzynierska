@@ -2,17 +2,21 @@ FROM python:3.9
 
 WORKDIR /app
 
-# Zainstaluj netcat
+# Zainstaluj wymagane narzędzia systemowe
 RUN apt-get update && apt-get install -y netcat-openbsd && apt-get clean
 
-# Skopiuj requirements i zainstaluj zależności
+# Zainstaluj zależności Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pobierz dane NLTK
+RUN python -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('stopwords', quiet=True); nltk.download('wordnet', quiet=True)" || true
 
 # Skopiuj kod aplikacji
 COPY . .
 
+# Udostępnij port
 EXPOSE 8000
 
-# Uruchom bezpośrednio z wieloma komendami
-CMD ["sh", "-c", "while ! nc -z db 5432; do sleep 1; done && python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+# Uruchom skrypt startowy
+CMD ["python", "startup.py"]

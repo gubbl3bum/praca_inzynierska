@@ -1,375 +1,950 @@
-import pandas as pd
-import requests
-import time
-import psycopg2
-import json
-from typing import Dict, Optional, List
-import logging
 import os
-from datetime import datetime  
+import sys
+import django
+import pandas as pd
+import psycopg2
+import requests
+import zipfile
+import re
+from django.db import transaction
+from django.db.models import Count
+from decimal import Decimal
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Setup Django 
+sys.path.append('/backend')  # Backend is in /backend via volume mount
+sys.path.append('/app')      # Scripts are in /app
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+django.setup()
 
-class BookCrossingImporter:
-    def __init__(self, db_config: Dict):
-        self.db_config = db_config
-        self.conn = None
-        self.open_library_base_url = "https://openlibrary.org"
-        self.open_library_covers_url = "https://covers.openlibrary.org/b"
-        
-    def connect_db(self):
-        """Połączenie z bazą danych"""
-        logger.info("Connecting to database...")
-        self.conn = psycopg2.connect(**self.db_config)
-        logger.info("Database connection established")
-        
-    def load_book_crossing_data(self):
-        """Załaduj dane Book-Crossing"""
-        logger.info("Loading CSV files...")
-        
-        books = pd.read_csv('/data/Books.csv', encoding='latin-1', sep=';', on_bad_lines='skip')
-        users = pd.read_csv('/data/Users.csv', encoding='latin-1', sep=';', on_bad_lines='skip')
-        ratings = pd.read_csv('/data/Ratings.csv', encoding='latin-1', sep=';', on_bad_lines='skip')
-        
-        logger.info(f"Loaded {len(books)} books, {len(users)} users, {len(ratings)} ratings")
-        logger.info(f"Books columns: {list(books.columns)}")
-        logger.info(f"Users columns: {list(users.columns)}")
-        logger.info(f"Ratings columns: {list(ratings.columns)}")
-        
-        return books, users, ratings
+from ml_api.models import Book, Author, Publisher, Category, User, Rating
+
+def clean_text(text):
+    """Cleans text from unnecessary characters"""
+    if pd.isna(text) or text == '':
+        return None
     
-    def get_open_library_info(self, isbn: str, title: str, author: str) -> Dict:
-        """Pobierz informacje z Open Library API"""
-        try:
-            if isbn and isbn != '0':
-                clean_isbn = isbn.replace('-', '').replace(' ', '')
-                
-                url = f"{self.open_library_base_url}/api/books"
-                params = {
-                    'bibkeys': f'ISBN:{clean_isbn}',
-                    'jscmd': 'data',
-                    'format': 'json'
-                }
-                
-                response = requests.get(url, params=params, timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    isbn_key = f'ISBN:{clean_isbn}'
-                    if isbn_key in data:
-                        return self.extract_open_library_info(data[isbn_key], clean_isbn)
-            
-        except Exception as e:
-            logger.warning(f"Error fetching Open Library data for ISBN {isbn}: {e}")
-        
-        return {}
+    text = str(text).strip()
+    text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with single space
     
-    def extract_open_library_info(self, book_data: Dict, isbn: str) -> Dict:
-        """Wyciągnij informacje z odpowiedzi Open Library API"""
-        extracted_info = {}
-        
-        if 'title' in book_data:
-            extracted_info['ol_title'] = book_data['title']
-        
-        if 'authors' in book_data and book_data['authors']:
-            authors = [author.get('name', '') for author in book_data['authors']]
-            extracted_info['ol_authors'] = authors
-        
-        if 'number_of_pages' in book_data:
-            extracted_info['page_count'] = book_data['number_of_pages']
-        
-        if isbn:
-            extracted_info['image_url_s'] = f"{self.open_library_covers_url}/isbn/{isbn}-S.jpg"
-            extracted_info['image_url_m'] = f"{self.open_library_covers_url}/isbn/{isbn}-M.jpg"
-            extracted_info['image_url_l'] = f"{self.open_library_covers_url}/isbn/{isbn}-L.jpg"
-        
-        if 'subjects' in book_data:
-            subjects = [subject.get('name', '') for subject in book_data['subjects']]
-            extracted_info['categories'] = subjects[:10]
-        
-        if 'key' in book_data:
-            extracted_info['open_library_id'] = book_data['key']
-        
-        return extracted_info
+    return text if text else None
+
+def parse_authors(author_string):
+    """Parses author string into a list"""
+    if not author_string:
+        return []
     
-    def import_books(self, books_df: pd.DataFrame, limit=1000):
-        """Import książek do ujednoliconej tabeli books"""
-        logger.info(f"Starting book import with limit: {limit}")
-        
-        cursor = self.conn.cursor()
-        count = 0
-        success_count = 0
-        error_count = 0
-        current_time = datetime.now()
-        
-        for idx, book in books_df.iterrows():
-            if count >= limit:
-                break
-
-            # Elastyczne nazwy kolumn
-            title = book.get('Title') or book.get('Book-Title') or book.get('title')
-            author = book.get('Author') or book.get('Book-Author') or book.get('author')
-            
-            if not title or pd.isna(title):
-                logger.warning(f"Skipping book without title (ISBN: {book.get('ISBN')})")
-                error_count += 1
-                continue
-
-            # Open Library data (co 5. książkę zamiast co 20.)
-            ol_info = {}
-            if idx % 5 == 0:  # Więcej książek z okładkami
-                ol_info = self.get_open_library_info(book.get('ISBN', ''), title, author)
-                time.sleep(0.3)  # Krótszy sleep
-            
-            # Przygotuj dane
-            isbn = book.get('ISBN', '').replace('-', '').replace(' ', '') if book.get('ISBN') else ''
-            publisher = book.get('Publisher') or book.get('publisher')
-            year = book.get('Year') or book.get('Year-Of-Publication') or book.get('publication_year')
-            
-            insert_data = {
-                'isbn': book.get('ISBN'),
-                'title': title,
-                'author': author,
-                'publisher': publisher,
-                'publication_year': year if pd.notna(year) else None,
-                'image_url_s': ol_info.get('image_url_s'),
-                'image_url_m': ol_info.get('image_url_m'),
-                'image_url_l': ol_info.get('image_url_l'),
-                'description': None,
-                'categories': ol_info.get('categories'),
-                'page_count': ol_info.get('page_count'),
-                'language': 'en',
-                'average_rating': None,
-                'ratings_count': None,
-                'open_library_id': ol_info.get('open_library_id'),
-                'created_at': current_time,
-                'updated_at': current_time
-            }
-            
-            sql = """
-                INSERT INTO books (isbn, title, author, publisher, publication_year, 
-                                image_url_s, image_url_m, image_url_l, description, 
-                                categories, page_count, language, average_rating, 
-                                ratings_count, open_library_id, created_at, updated_at)
-                VALUES (%(isbn)s, %(title)s, %(author)s, %(publisher)s, %(publication_year)s,
-                        %(image_url_s)s, %(image_url_m)s, %(image_url_l)s, %(description)s,
-                        %(categories)s, %(page_count)s, %(language)s, %(average_rating)s,
-                        %(ratings_count)s, %(open_library_id)s, %(created_at)s, %(updated_at)s)
-                ON CONFLICT (isbn) DO NOTHING
-                """
-            
-            try:
-                cursor.execute(sql, insert_data)
-                count += 1
-                success_count += 1
-                
-                if count % 100 == 0:
-                    logger.info(f"Processed {count} books (Success: {success_count}, Errors: {error_count})")
-                    self.conn.commit()
-                    
-            except Exception as e:
-                logger.error(f"Error inserting book '{title}': {e}")
-                self.conn.rollback()
-                error_count += 1
-                
-        self.conn.commit()
-        cursor.close()
-        logger.info(f"Book import completed! Success: {success_count}, Errors: {error_count}")
-
-    def import_users(self, users_df: pd.DataFrame, limit=500):
-        """Import użytkowników do ujednoliconej tabeli users"""
-        logger.info(f"Starting user import with limit: {limit}")
-        logger.info(f"User CSV columns: {list(users_df.columns)}")
-        
-        cursor = self.conn.cursor()
-        count = 0
-        success_count = 0
-        error_count = 0
-        
-        for idx, user in users_df.iterrows():
-            if count >= limit:
-                break
-                
-            # Przetwórz dane użytkownika
-            user_id = user.get('User-ID')
-            age = user.get('Age') if pd.notna(user.get('Age')) and user.get('Age') != '' else None
-            
-            # Lokalizacja (jeśli jest)
-            city = state = country = None
-            if 'Location' in user and pd.notna(user.get('Location')) and user.get('Location'):
-                location_parts = str(user.get('Location')).split(',')
-                city = location_parts[0].strip() if len(location_parts) > 0 else None
-                state = location_parts[1].strip() if len(location_parts) > 1 else None
-                country = location_parts[2].strip() if len(location_parts) > 2 else None
-            
-            sql = """
-            INSERT INTO users (original_user_id, age, city, state, country, user_type, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (original_user_id) DO NOTHING
-            """
-            
-            try:
-                cursor.execute(sql, (
-                    user_id,
-                    age,
-                    city,
-                    state,
-                    country,
-                    'dataset',  # Typ użytkownika z datasetu
-                    datetime.now()
-                ))
-                count += 1
-                success_count += 1
-                
-                if count % 200 == 0:
-                    logger.info(f"Processed {count} users")
-                    self.conn.commit()
-                    
-            except Exception as e:
-                logger.error(f"Error inserting user {user_id}: {e}")
-                self.conn.rollback()
-                error_count += 1
-        
-        self.conn.commit()
-        cursor.close()
-        logger.info(f"User import completed! Success: {success_count}, Errors: {error_count}")
+    author_string = clean_text(author_string)
+    if not author_string:
+        return []
     
-    def import_ratings(self, ratings_df: pd.DataFrame, limit=50000):
-        """Import ocen do ujednoliconej tabeli ratings"""
-        logger.info(f"Starting ratings import with limit: {limit}")
-        
-        cursor = self.conn.cursor()
-        count = 0
-        success_count = 0
-        error_count = 0
-        
-        # Pobierz mapowania ID
-        logger.info("Loading user and book mappings...")
-        cursor.execute("SELECT original_user_id, id FROM users WHERE user_type = 'dataset'")
-        user_mapping = dict(cursor.fetchall())
-        logger.info(f"Loaded {len(user_mapping)} user mappings")
-        
-        cursor.execute("SELECT isbn, id FROM books WHERE isbn IS NOT NULL")
-        book_mapping = dict(cursor.fetchall())
-        logger.info(f"Loaded {len(book_mapping)} book mappings")
-        
-        for idx, rating in ratings_df.iterrows():
-            if count >= limit:
-                break
-                
-            user_id = user_mapping.get(rating.get('User-ID'))
-            book_id = book_mapping.get(rating.get('ISBN'))
-            original_rating = rating.get('Book-Rating')
-            
-            if user_id and book_id and pd.notna(original_rating):
-                # Konwertuj ocenę z 0-10 na 1-5
-                if original_rating == 0:
-                    normalized_rating = 1.0
-                else:
-                    normalized_rating = round((original_rating / 2.0) + 0.5, 1)
-                
-                sql = """
-                INSERT INTO ratings (user_id, book_id, rating, original_rating, rating_scale, source_type, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id, book_id) DO NOTHING
-                """
-                
-                try:
-                    cursor.execute(sql, (
-                        user_id, 
-                        book_id, 
-                        normalized_rating,
-                        original_rating,
-                        '0-10',
-                        'dataset',
-                        datetime.now()
-                    ))
-                    count += 1
-                    success_count += 1
-                    
-                    if count % 2000 == 0:
-                        logger.info(f"Processed {count} ratings")
-                        self.conn.commit()
-                        
-                except Exception as e:
-                    logger.error(f"Error inserting rating: {e}")
-                    self.conn.rollback()
-                    error_count += 1
-            else:
-                if count % 5000 == 0:
-                    logger.debug(f"Skipping rating - missing user_id: {user_id}, book_id: {book_id}")
-        
-        self.conn.commit()
-        cursor.close()
-        logger.info(f"Ratings import completed! Success: {success_count}, Errors: {error_count}")
+    # Different author separators
+    separators = [', ', ' and ', ' & ', ';']
+    authors = [author_string]
+    
+    for separator in separators:
+        if separator in author_string:
+            authors = [a.strip() for a in author_string.split(separator)]
+            break
+    
+    # Remove empty and duplicates
+    authors = list(set([a for a in authors if a and a.strip()]))
+    
+    return authors
 
-    def run_import(self):
-        """Uruchom pełny import do ujednoliconych tabel"""
-        logger.info("Starting unified Book-Crossing import...")
+def get_or_create_author(name):
+    """Gets or creates an author"""
+    if not name:
+        return None
+    
+    name = clean_text(name)
+    if not name:
+        return None
+    
+    author, created = Author.objects.get_or_create(
+        name=name
+    )
+    
+    if created:
+        print(f"    Created author: {name}")
+    
+    return author
 
-        self.connect_db()
-        cursor = self.conn.cursor()
-        
-        try:
-            cursor.execute("SELECT COUNT(*) FROM books")
-            books_count = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(*) FROM users WHERE user_type = 'dataset'")
-            users_count = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(*) FROM ratings WHERE source_type = 'dataset'")
-            ratings_count = cursor.fetchone()[0]
-            
-            logger.info(f"Current data in database:")
-            logger.info(f"  Books: {books_count}")
-            logger.info(f"  Dataset Users: {users_count}")
-            logger.info(f"  Dataset Ratings: {ratings_count}")
-            
-        except Exception as e:
-            logger.error(f"Error checking database: {e}")
-            cursor.close()
-            return
-            
-        cursor.close()
+def get_or_create_publisher(name):
+    """Gets or creates a publisher"""
+    if not name:
+        return None
+    
+    name = clean_text(name)
+    if not name:
+        return None
+    
+    publisher, created = Publisher.objects.get_or_create(
+        name=name
+    )
+    
+    if created:
+        print(f"    Created publisher: {name}")
+    
+    return publisher
 
-        # POPRAWIONE: Import zawsze, ale z logowaniem co już jest
-        logger.info("Loading data files...")
-        books, users, ratings = self.load_book_crossing_data()
-        
-        if books_count == 0:
-            logger.info("Starting book import...")
-            self.import_books(books, limit=200)
-        else:
-            logger.info(f"Skipping book import - already have {books_count} books")
-        
-        if users_count == 0:
-            logger.info("Starting user import...")
-            self.import_users(users, limit=500)
-            # Sprawdź ponownie po imporcie
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM users WHERE user_type = 'dataset'")
-            users_count = cursor.fetchone()[0]
-            cursor.close()
-            logger.info(f"After import: {users_count} users in database")
-        else:
-            logger.info(f"Skipping user import - already have {users_count} users")
-        
-        if ratings_count == 0:  # Uproszczone - zawsze próbuj jeśli nie ma ocen
-            logger.info("Starting ratings import...")
-            self.import_ratings(ratings, limit=10000)
-        else:
-            logger.info(f"Skipping ratings import - already have {ratings_count} ratings")
-        
-        logger.info("Unified import completed!")
-        self.conn.close()
+def get_or_create_category(name):
+    """Gets or creates a category"""
+    if not name:
+        return None
+    
+    name = clean_text(name)
+    if not name:
+        return None
+    
+    category, created = Category.objects.get_or_create(
+        name=name
+    )
+    
+    if created:
+        print(f"    Created category: {name}")
+    
+    return category
 
-if __name__ == "__main__":
+def wait_for_database():
+    """Waits for database availability"""
+    import time
+    
     db_config = {
         'host': os.environ.get('POSTGRES_HOST', 'db'),
         'database': os.environ.get('POSTGRES_DB', 'book_recommendations'),
         'user': os.environ.get('POSTGRES_USER', 'postgres'),
-        'password': os.environ.get('POSTGRES_PASSWORD', 'postgres')
+        'password': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
+        'port': os.environ.get('POSTGRES_PORT', '5432'),
     }
     
-    importer = BookCrossingImporter(db_config=db_config)
-    importer.run_import()
+    print("🔄 Waiting for database...")
+    
+    for attempt in range(30):
+        try:
+            conn = psycopg2.connect(**db_config)
+            conn.close()
+            print("Database available!")
+            return True
+        except psycopg2.OperationalError:
+            print(f"   Attempt {attempt + 1}/30 - waiting...")
+            time.sleep(2)
+    
+    print("Failed to connect to database!")
+    return False
+
+def run_migrations():
+    """Runs Django migrations"""
+    import subprocess
+    
+    print("Running Django migrations...")
+    
+    try:
+        # Create migrations - CORRECTED PATH
+        result = subprocess.run([
+            'python', '/backend/manage.py', 'makemigrations', 'ml_api'
+        ], capture_output=True, text=True, cwd='/backend')
+        
+        if result.returncode != 0:
+            print(f" Makemigrations warning: {result.stderr}")
+        
+        # Execute migrations - CORRECTED PATH
+        result = subprocess.run([
+            'python', '/backend/manage.py', 'migrate'
+        ], capture_output=True, text=True, cwd='/backend')
+        
+        if result.returncode == 0:
+            print("Migrations completed successfully!")
+            return True
+        else:
+            print(f"Migration error: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        print(f"Error during migrations: {e}")
+        return False
+
+def import_users_csv(csv_file_path):
+    """Imports users from CSV file"""
+    
+    print(f"\nIMPORTING USERS FROM {csv_file_path}")
+    print("=" * 60)
+    
+    if not os.path.exists(csv_file_path):
+        print(f"File not found: {csv_file_path}")
+        return False
+    
+    try:
+        # Load CSV
+        print(f"Loading data from {csv_file_path}...")
+        
+        # Try different separators and encodings
+        separators = [';', ',', '\t']
+        encodings = ['utf-8', 'iso-8859-1', 'cp1252']
+        
+        df = None
+        for sep in separators:
+            for enc in encodings:
+                try:
+                    df = pd.read_csv(csv_file_path, sep=sep, encoding=enc)
+                    if len(df.columns) >= 3:  # Must have at least 3 columns
+                        print(f"Loaded with separator '{sep}' and encoding '{enc}'")
+                        break
+                except:
+                    continue
+            if df is not None and len(df.columns) >= 3:
+                break
+        
+        if df is None or len(df.columns) < 3:
+            print("Failed to load CSV file with any separator/encoding")
+            return False
+        
+        print(f"Loaded {len(df)} records")
+        print(f"Columns: {list(df.columns)}")
+        
+        # Column mapping for users
+        column_mapping = {}
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'user' in col_lower and ('id' in col_lower or 'no' in col_lower):
+                column_mapping['user_id'] = col
+            elif 'location' in col_lower or 'city' in col_lower:
+                column_mapping['location'] = col
+            elif 'age' in col_lower:
+                column_mapping['age'] = col
+            elif 'name' in col_lower or 'username' in col_lower:
+                column_mapping['name'] = col
+        
+        print(f"Column mapping: {column_mapping}")
+        
+        # Statistics
+        stats = {
+            'users_created': 0,
+            'users_updated': 0,
+            'users_skipped': 0,
+            'errors': []
+        }
+        
+        # Import in transaction
+        with transaction.atomic():
+            
+            for index, row in df.iterrows():
+                try:
+                    # Extract data from mapped columns
+                    user_id = row.get(column_mapping.get('user_id'))
+                    location = clean_text(row.get(column_mapping.get('location')))
+                    age = row.get(column_mapping.get('age'))
+                    name = clean_text(row.get(column_mapping.get('name')))
+                    
+                    if pd.isna(user_id) or user_id == '':
+                        if (index + 1) % 10000 == 0:
+                            print(f"   ⚠️  Row {index + 1}: Skipped - missing user_id")
+                        stats['users_skipped'] += 1
+                        continue
+                    
+                    try:
+                        user_id = int(user_id)
+                    except (ValueError, TypeError):
+                        stats['users_skipped'] += 1
+                        continue
+                    
+                    if (index + 1) % 5000 == 0:
+                        print(f"👤 Processing user {index + 1}/{len(df)}: User {user_id}...")
+                    
+                    # Check if user already exists
+                    user = None
+                    try:
+                        user = User.objects.get(original_user_id=user_id)
+                    except User.DoesNotExist:
+                        pass
+                    
+                    # Prepare data for saving
+                    user_data = {
+                        'original_user_id': user_id,
+                        'user_type': 'dataset',  # Users from dataset
+                    }
+                    
+                    # Add age
+                    if pd.notna(age) and age != '':
+                        try:
+                            age_int = int(age)
+                            if 10 <= age_int <= 120:  # Reasonable age range
+                                user_data['age'] = age_int
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Parse location (assuming format "City, State, Country")
+                    if location:
+                        location_parts = [part.strip() for part in location.split(',')]
+                        if len(location_parts) >= 1:
+                            user_data['city'] = location_parts[0]
+                        if len(location_parts) >= 2:
+                            user_data['state'] = location_parts[1]
+                        if len(location_parts) >= 3:
+                            user_data['country'] = location_parts[2]
+                    
+                    # Add username
+                    if name:
+                        user_data['username'] = name
+                    
+                    # Create or update user
+                    if user:
+                        # Update existing
+                        for key, value in user_data.items():
+                            if value is not None:
+                                setattr(user, key, value)
+                        user.save()
+                        stats['users_updated'] += 1
+                    else:
+                        # Create new
+                        user = User.objects.create(**user_data)
+                        stats['users_created'] += 1
+                    
+                except Exception as e:
+                    error_msg = f"Error in row {index + 1}: {str(e)}"
+                    stats['errors'].append(error_msg)
+                    if len(stats['errors']) <= 10:  # Show only first 10 errors
+                        print(f"   ❌ {error_msg}")
+                    continue
+        
+        # Summary
+        print("\n" + "=" * 60)
+        print("USER IMPORT SUMMARY:")
+        print(f"Users created: {stats['users_created']}")
+        print(f"Users updated: {stats['users_updated']}")
+        print(f"Users skipped: {stats['users_skipped']}")
+        print(f"Errors: {len(stats['errors'])}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Critical error during user import: {e}")
+        return False
+
+def import_ratings_csv(csv_file_path):
+    """Imports ratings from CSV file"""
+    
+    print(f"\nIMPORTING RATINGS FROM {csv_file_path}")
+    print("=" * 60)
+    
+    if not os.path.exists(csv_file_path):
+        print(f"File not found: {csv_file_path}")
+        return False
+    
+    try:
+        # Load CSV
+        print(f"Loading data from {csv_file_path}...")
+        
+        # Try different separators and encodings
+        separators = [';', ',', '\t']
+        encodings = ['utf-8', 'iso-8859-1', 'cp1252']
+        
+        df = None
+        for sep in separators:
+            for enc in encodings:
+                try:
+                    df = pd.read_csv(csv_file_path, sep=sep, encoding=enc)
+                    if len(df.columns) >= 3:  # Must have at least 3 columns
+                        print(f"Loaded with separator '{sep}' and encoding '{enc}'")
+                        break
+                except:
+                    continue
+            if df is not None and len(df.columns) >= 3:
+                break
+        
+        if df is None or len(df.columns) < 3:
+            print("Failed to load CSV file with any separator/encoding")
+            return False
+        
+        print(f"Loaded {len(df)} records")
+        print(f"Columns: {list(df.columns)}")
+        
+        # Column mapping for ratings
+        column_mapping = {}
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'user' in col_lower and ('id' in col_lower or 'no' in col_lower):
+                column_mapping['user_id'] = col
+            elif 'isbn' in col_lower:
+                column_mapping['isbn'] = col
+            elif 'book' in col_lower and 'rating' in col_lower:
+                column_mapping['rating'] = col
+            elif 'rating' in col_lower and 'book' not in col_lower:
+                column_mapping['rating'] = col
+        
+        print(f"🗺️  Column mapping: {column_mapping}")
+        
+        # Check if we have required columns
+        required_fields = ['user_id', 'isbn', 'rating']
+        missing_fields = [field for field in required_fields if field not in column_mapping]
+        
+        if missing_fields:
+            print(f"Missing required columns: {missing_fields}")
+            return False
+        
+        # Statistics
+        stats = {
+            'ratings_created': 0,
+            'ratings_updated': 0,
+            'ratings_skipped': 0,
+            'users_not_found': 0,
+            'books_not_found': 0,
+            'errors': []
+        }
+        
+        # Cache for performance
+        user_cache = {}
+        book_cache = {}
+        
+        # Import in transaction
+        with transaction.atomic():
+            
+            for index, row in df.iterrows():
+                try:
+                    # Extract data from mapped columns
+                    user_id = row.get(column_mapping.get('user_id'))
+                    isbn = clean_text(row.get(column_mapping.get('isbn')))
+                    rating_value = row.get(column_mapping.get('rating'))
+                    
+                    # Check required fields
+                    if pd.isna(user_id) or pd.isna(rating_value) or not isbn:
+                        stats['ratings_skipped'] += 1
+                        continue
+                    
+                    try:
+                        user_id = int(user_id)
+                        rating_value = float(rating_value)
+                    except (ValueError, TypeError):
+                        stats['ratings_skipped'] += 1
+                        continue
+                    
+                    # Check rating range
+                    if not (0 <= rating_value <= 10):  # Assuming 0-10 scale
+                        stats['ratings_skipped'] += 1
+                        continue
+                    
+                    if (index + 1) % 10000 == 0:
+                        print(f"⭐ Processing rating {index + 1}/{len(df)}: User {user_id} -> {isbn} = {rating_value}...")
+                    
+                    # Find user (with cache)
+                    user = None
+                    if user_id in user_cache:
+                        user = user_cache[user_id]
+                    else:
+                        try:
+                            user = User.objects.get(original_user_id=user_id)
+                            user_cache[user_id] = user
+                        except User.DoesNotExist:
+                            user_cache[user_id] = None
+                    
+                    if not user:
+                        stats['users_not_found'] += 1
+                        continue
+                    
+                    # Find book (with cache)
+                    book = None
+                    if isbn in book_cache:
+                        book = book_cache[isbn]
+                    else:
+                        try:
+                            book = Book.objects.get(isbn=isbn)
+                            book_cache[isbn] = book
+                        except Book.DoesNotExist:
+                            book_cache[isbn] = None
+                    
+                    if not book:
+                        stats['books_not_found'] += 1
+                        continue
+                    
+                    # Check if rating already exists
+                    rating_obj = None
+                    try:
+                        rating_obj = Rating.objects.get(user=user, book=book)
+                    except Rating.DoesNotExist:
+                        pass
+                    
+                    # Convert rating to 1-5 scale
+                    if rating_value == 0:
+                        normalized_rating = Decimal('1.0')  # 0 -> 1
+                        rating_scale = '0-10'
+                    elif rating_value <= 5:
+                        normalized_rating = Decimal(str(rating_value))  # 1-5 -> 1-5
+                        rating_scale = '1-5'
+                    else:
+                        # Scale 6-10 -> convert to 1-5
+                        normalized_rating = round(Decimal(rating_value) / 2 + Decimal('0.5'), 1)
+                        rating_scale = '0-10'
+                    
+                    # Prepare data for saving
+                    rating_data = {
+                        'user': user,
+                        'book': book,
+                        'rating': normalized_rating,
+                        'original_rating': int(rating_value),
+                        'rating_scale': rating_scale,
+                        'source_type': 'dataset'
+                    }
+                    
+                    # Create or update rating
+                    if rating_obj:
+                        # Update existing
+                        for key, value in rating_data.items():
+                            setattr(rating_obj, key, value)
+                        rating_obj.save()
+                        stats['ratings_updated'] += 1
+                    else:
+                        # Create new
+                        rating_obj = Rating.objects.create(**rating_data)
+                        stats['ratings_created'] += 1
+                    
+                except Exception as e:
+                    error_msg = f"Error in row {index + 1}: {str(e)}"
+                    stats['errors'].append(error_msg)
+                    if len(stats['errors']) <= 10:  # Show only first 10 errors
+                        print(f"   ❌ {error_msg}")
+                    continue
+        
+        # Summary
+        print("\n" + "=" * 60)
+        print("RATING IMPORT SUMMARY:")
+        print(f"Ratings created: {stats['ratings_created']}")
+        print(f"Ratings updated: {stats['ratings_updated']}")
+        print(f"Ratings skipped: {stats['ratings_skipped']}")
+        print(f"Users not found: {stats['users_not_found']}")
+        print(f"Books not found: {stats['books_not_found']}")
+        print(f"Errors: {len(stats['errors'])}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Critical error during rating import: {e}")
+        return False
+
+def import_books_csv(csv_file_path):
+    """Imports books from CSV file to normalized database"""
+    
+    print(f"\nIMPORTING BOOKS FROM {csv_file_path}")
+    print("=" * 60)
+    
+    if not os.path.exists(csv_file_path):
+        print(f"File not found: {csv_file_path}")
+        return False
+    
+    try:
+        # Load CSV
+        print(f"Loading data from {csv_file_path}...")
+        
+        # Try different separators and encodings
+        separators = [';', ',', '\t']
+        encodings = ['utf-8', 'iso-8859-1', 'cp1252']
+        
+        df = None
+        for sep in separators:
+            for enc in encodings:
+                try:
+                    df = pd.read_csv(csv_file_path, sep=sep, encoding=enc)
+                    if len(df.columns) >= 4:  # Must have at least 4 columns
+                        print(f"Loaded with separator '{sep}' and encoding '{enc}'")
+                        break
+                except:
+                    continue
+            if df is not None and len(df.columns) >= 4:
+                break
+        
+        if df is None or len(df.columns) < 4:
+            print("Failed to load CSV file with any separator/encoding")
+            return False
+        
+        print(f"Loaded {len(df)} records")
+        print(f"Columns: {list(df.columns)}")
+        
+        # Column mapping (flexible names)
+        column_mapping = {}
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'isbn' in col_lower:
+                column_mapping['isbn'] = col
+            elif 'title' in col_lower or 'book' in col_lower:
+                column_mapping['title'] = col
+            elif 'author' in col_lower:
+                column_mapping['author'] = col
+            elif 'year' in col_lower or 'date' in col_lower:
+                column_mapping['year'] = col
+            elif 'publisher' in col_lower:
+                column_mapping['publisher'] = col
+        
+        print(f"🗺️  Column mapping: {column_mapping}")
+        
+        # Statistics
+        stats = {
+            'books_created': 0,
+            'books_updated': 0,
+            'books_skipped': 0,
+            'authors_created': 0,
+            'publishers_created': 0,
+            'errors': []
+        }
+        
+        # Import in transaction
+        with transaction.atomic():
+            
+            for index, row in df.iterrows():
+                try:
+                    # Extract data from mapped columns
+                    isbn = clean_text(row.get(column_mapping.get('isbn')))
+                    title = clean_text(row.get(column_mapping.get('title')))
+                    author_string = clean_text(row.get(column_mapping.get('author')))
+                    publisher_string = clean_text(row.get(column_mapping.get('publisher')))
+                    year = row.get(column_mapping.get('year'))
+                    
+                    if not title:
+                        if (index + 1) % 10000 == 0:
+                            print(f"     Row {index + 1}: Skipped - missing title")
+                        stats['books_skipped'] += 1
+                        continue
+                    
+                    if (index + 1) % 1000 == 0:
+                        print(f"📖 Processing book {index + 1}/{len(df)}: {title[:50]}...")
+                    
+                    # Check if book already exists
+                    book = None
+                    if isbn:
+                        try:
+                            book = Book.objects.get(isbn=isbn)
+                        except Book.DoesNotExist:
+                            pass
+                    
+                    if not book and title and author_string:
+                        # Check by title and first author
+                        authors_list = parse_authors(author_string)
+                        if authors_list:
+                            first_author = authors_list[0]
+                            existing_books = Book.objects.filter(
+                                title__iexact=title,
+                                authors__name__iexact=first_author
+                            )
+                            if existing_books.exists():
+                                book = existing_books.first()
+                    
+                    # Prepare data for saving
+                    book_data = {
+                        'title': title,
+                        'isbn': isbn,
+                    }
+                    
+                    # Add publication year
+                    if pd.notna(year) and year != '':
+                        try:
+                            year_int = int(year)
+                            if 1000 <= year_int <= 2030:  # Reasonable year range
+                                book_data['publication_year'] = year_int
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Create or update book
+                    if book:
+                        # Update existing
+                        for key, value in book_data.items():
+                            if value is not None:
+                                setattr(book, key, value)
+                        book.save()
+                        stats['books_updated'] += 1
+                    else:
+                        # Create new
+                        book = Book.objects.create(**book_data)
+                        stats['books_created'] += 1
+                    
+                    # Add authors
+                    if author_string:
+                        authors_list = parse_authors(author_string)
+                        book_authors = []
+                        
+                        for author_name in authors_list:
+                            author = get_or_create_author(author_name)
+                            if author:
+                                book_authors.append(author)
+                        
+                        if book_authors:
+                            book.authors.set(book_authors)
+                    
+                    # Add publisher
+                    if publisher_string:
+                        publisher = get_or_create_publisher(publisher_string)
+                        if publisher:
+                            book.publisher = publisher
+                            book.save()
+                    
+                except Exception as e:
+                    error_msg = f"Error in row {index + 1}: {str(e)}"
+                    stats['errors'].append(error_msg)
+                    if len(stats['errors']) <= 10:  # Show only first 10 errors
+                        print(f"    {error_msg}")
+                    continue
+        
+        # Summary
+        print("\n" + "=" * 60)
+        print("BOOK IMPORT SUMMARY:")
+        print(f"Books created: {stats['books_created']}")
+        print(f"Books updated: {stats['books_updated']}")
+        print(f"Books skipped: {stats['books_skipped']}")
+        print(f"Authors in database: {Author.objects.count()}")
+        print(f"Publishers in database: {Publisher.objects.count()}")
+        print(f"Errors: {len(stats['errors'])}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Critical error during book import: {e}")
+        return False
+
+def update_book_ratings():
+    """Updates average book ratings based on ratings table"""
+    
+    print("\n📊 UPDATING AVERAGE BOOK RATINGS")
+    print("=" * 60)
+    
+    try:
+        from django.db.models import Avg, Count
+        
+        # Calculate average ratings for all books with ratings
+        books_with_ratings = Book.objects.annotate(
+            avg_rating=Avg('ratings__rating'),
+            rating_count=Count('ratings')
+        ).filter(rating_count__gt=0)
+        
+        updated_books = 0
+        
+        for book in books_with_ratings:
+            # Update denormalized fields
+            book.average_rating = round(book.avg_rating, 2)
+            book.ratings_count = book.rating_count
+            book.save(update_fields=['average_rating', 'ratings_count'])
+            updated_books += 1
+            
+            if updated_books % 1000 == 0:
+                print(f"   Updated {updated_books} books...")
+        
+        print(f"Updated ratings for {updated_books} books")
+        return True
+        
+    except Exception as e:
+        print(f"Error during rating updates: {e}")
+        return False
+
+def analyze_import_results():
+    """Analyzes import results"""
+    
+    print("\n" + "=" * 60)
+    print("IMPORT RESULTS ANALYSIS:")
+    print("=" * 60)
+    
+    try:
+        # Basic statistics
+        total_books = Book.objects.count()
+        total_authors = Author.objects.count()
+        total_publishers = Publisher.objects.count()
+        total_categories = Category.objects.count()
+        total_users = User.objects.count()
+        total_ratings = Rating.objects.count()
+        
+        print(f"Total books: {total_books}")
+        print(f"Total authors: {total_authors}")
+        print(f"Total publishers: {total_publishers}")
+        print(f"Total categories: {total_categories}")
+        print(f"Total users: {total_users}")
+        print(f"Total ratings: {total_ratings}")
+        
+        if total_authors > 0:
+            # Top authors
+            print(f"\nTOP 10 AUTHORS (by book count):")
+            top_authors = Author.objects.annotate(
+                book_count=Count('books')
+            ).order_by('-book_count')[:10]
+            
+            for i, author in enumerate(top_authors, 1):
+                print(f"   {i}. {author.name} ({author.book_count} books)")
+        
+        if total_publishers > 0:
+            # Top publishers
+            print(f"\nTOP 10 PUBLISHERS (by book count):")
+            top_publishers = Publisher.objects.annotate(
+                book_count=Count('books')
+            ).order_by('-book_count')[:10]
+            
+            for i, publisher in enumerate(top_publishers, 1):
+                print(f"   {i}. {publisher.name} ({publisher.book_count} books)")
+        
+        if total_ratings > 0:
+            # Rating statistics
+            from django.db.models import Avg, Max, Min
+            rating_stats = Rating.objects.aggregate(
+                avg_rating=Avg('rating'),
+                min_rating=Min('rating'),
+                max_rating=Max('rating')
+            )
+            
+            print(f"\nRATING STATISTICS:")
+            print(f"   Average rating: {rating_stats['avg_rating']:.2f}/5.0")
+            print(f"   Minimum rating: {rating_stats['min_rating']}")
+            print(f"   Maximum rating: {rating_stats['max_rating']}")
+            
+            # Top rated books
+            print(f"\nTOP 10 HIGHEST RATED BOOKS:")
+            top_rated_books = Book.objects.filter(
+                ratings_count__gte=5  # minimum 5 ratings
+            ).order_by('-average_rating', '-ratings_count')[:10]
+            
+            for i, book in enumerate(top_rated_books, 1):
+                author_name = book.primary_author.name if book.primary_author else "Unknown"
+                print(f"   {i}. {book.title} by {author_name} ({book.average_rating}/5.0, {book.ratings_count} ratings)")
+        
+        if total_users > 0:
+            # User statistics
+            dataset_users = User.objects.filter(user_type='dataset').count()
+            app_users = User.objects.filter(user_type='app').count()
+            
+            print(f"\nUSER STATISTICS:")
+            print(f"   From dataset: {dataset_users}")
+            print(f"   From app: {app_users}")
+            
+            # Top countries
+            top_countries = User.objects.exclude(country__isnull=True).exclude(country='').values('country').annotate(
+                user_count=Count('id')
+            ).order_by('-user_count')[:10]
+            
+            if top_countries:
+                print(f"\nTOP 10 USER COUNTRIES:")
+                for i, country_data in enumerate(top_countries, 1):
+                    print(f"   {i}. {country_data['country']}: {country_data['user_count']} users")
+        
+        # Books without authors/publishers/ratings
+        books_without_authors = Book.objects.filter(authors__isnull=True).count()
+        books_without_publishers = Book.objects.filter(publisher__isnull=True).count()
+        books_without_ratings = Book.objects.filter(ratings__isnull=True).count()
+        
+        print(f"\n DATA TO IMPROVE:")
+        print(f"   Books without authors: {books_without_authors}")
+        print(f"   Books without publishers: {books_without_publishers}")
+        print(f"   Books without ratings: {books_without_ratings}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error during analysis: {e}")
+        return False
+
+def main():
+    """Main import function"""
+    
+    print("STARTING COMPLETE DATA IMPORT")
+    print("=" * 70)
+    
+    # 1. Wait for database
+    if not wait_for_database():
+        sys.exit(1)
+    
+    # 2. Run migrations
+    if not run_migrations():
+        print(" Continuing despite migration errors...")
+    
+    # 3. Import books
+    print("\n" + "" * 35)
+    print("STAGE 1: BOOK IMPORT")
+    print("" * 35)
+    
+    books_csv_paths = [
+        '/data/Books.csv',
+        '/data/books.csv', 
+        '/app/Books.csv',
+        '/app/books.csv'
+    ]
+    
+    books_imported = False
+    for csv_path in books_csv_paths:
+        if os.path.exists(csv_path):
+            print(f"Found book file: {csv_path}")
+            if import_books_csv(csv_path):
+                books_imported = True
+                break
+    
+    if not books_imported:
+        print("No book file found for import")
+        print(f"Checked paths: {books_csv_paths}")
+        print("Contents of /data:")
+        try:
+            for f in os.listdir('/data'):
+                print(f"     - {f}")
+        except:
+            print("     No access to /data")
+        # Continue despite missing books
+    
+    # 4. Import users
+    print("\n" + "" * 35)
+    print("STAGE 2: USER IMPORT")
+    print("" * 35)
+    
+    users_csv_paths = [
+        '/data/Users.csv',
+        '/data/users.csv',
+        '/data/BX-Users.csv',
+        '/app/Users.csv',
+        '/app/users.csv'
+    ]
+    
+    users_imported = False
+    for csv_path in users_csv_paths:
+        if os.path.exists(csv_path):
+            print(f"Found user file: {csv_path}")
+            if import_users_csv(csv_path):
+                users_imported = True
+                break
+    
+    if not users_imported:
+        print("No user file found - skipping")
+        print(f"Checked paths: {users_csv_paths}")
+    
+    # 5. Import ratings
+    print("\n" + "" * 35)
+    print("STAGE 3: RATING IMPORT")
+    print("" * 35)
+    
+    ratings_csv_paths = [
+        '/data/Ratings.csv',
+        '/data/ratings.csv',
+        '/data/BX-Book-Ratings.csv',
+        '/app/Ratings.csv', 
+        '/app/ratings.csv'
+    ]
+    
+    ratings_imported = False
+    for csv_path in ratings_csv_paths:
+        if os.path.exists(csv_path):
+            print(f"Found rating file: {csv_path}")
+            if import_ratings_csv(csv_path):
+                ratings_imported = True
+                break
+    
+    if not ratings_imported:
+        print("No rating file found - skipping")
+        print(f"   Checked paths: {ratings_csv_paths}")
+    
+    # 6. Update average book ratings
+    if ratings_imported:
+        print("\n" + "" * 35)
+        print("STAGE 4: UPDATING AVERAGE RATINGS")
+        print("" * 35)
+        update_book_ratings()
+    
+    # 7. Analyze results
+    print("\n" + "" * 35)
+    print("STAGE 5: RESULTS ANALYSIS")
+    print("" * 35)
+    analyze_import_results()
+    
+    print("\nCOMPLETE IMPORT FINISHED SUCCESSFULLY!")
+    print("Database ready for use")
+    print("Check Django Admin: http://localhost:8000/admin/")
+    print("Check API: http://localhost:8000/api/books/")
+    print("Check API status: http://localhost:8000/api/status/")
+
+if __name__ == "__main__":
+    main()

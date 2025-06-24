@@ -1,5 +1,21 @@
-pandas==2.0.0
+# Django and REST framework
+django==4.2.0
+djangorestframework==3.14.0
+django-cors-headers==3.14.0
+
+# Database
 psycopg2-binary==2.9.5
-requests==2.31.0
+
+# Data processing
+pandas==2.0.0
 numpy==1.24.2
+
+# API i HTTP
+requests==2.31.0
+
+# Machine Learning 
+scikit-learn==1.2.2
+
+# Utilities
 python-dotenv==1.0.0
+gunicorn==20.1.0
