@@ -23,7 +23,7 @@ from ml_api.models import (
 )
 
 # 🚨 TESTOWY LIMIT KSIĄŻEK - USUŃ DLA PEŁNEGO IMPORTU
-TEST_BOOK_LIMIT = 500  # 🔴 ZMIEŃ NA None dla pełnego importu
+TEST_BOOK_LIMIT = 1000  # 🔴 ZMIEŃ NA None dla pełnego importu
 
 def wait_for_database():
     """Wait for database availability"""
@@ -59,17 +59,9 @@ def run_migrations():
     print("🔄 Running Django migrations...")
     
     try:
-        # Usuń stare migracje
-        migrations_dir = '/app/ml_api/migrations'
-        if os.path.exists(migrations_dir):
-            for file in os.listdir(migrations_dir):
-                if file.endswith('.py') and file != '__init__.py':
-                    os.remove(os.path.join(migrations_dir, file))
-                    print(f"   🗑️  Removed {file}")
-        
         # Create migrations
         result = subprocess.run([
-            'python', '/app/manage.py', 'makemigrations', 'ml_api'
+            'python', '/app/manage.py', 'makemigrations', 'ml_api', '--noinput'
         ], capture_output=True, text=True, cwd='/app')
         
         if result.returncode != 0:
@@ -79,7 +71,7 @@ def run_migrations():
         
         # Execute migrations
         result = subprocess.run([
-            'python', '/app/manage.py', 'migrate'
+            'python', '/app/manage.py', 'migrate', '--noinput'
         ], capture_output=True, text=True, cwd='/app')
         
         if result.returncode == 0:
@@ -201,22 +193,20 @@ def extract_keywords(text, top_n=5):
         return ""
 
 def parse_price(price_string):
-    """Parse price string to decimal - ulepszona wersja"""
+    """Parse price string to decimal"""
     if not price_string or pd.isna(price_string):
         return None
     
     try:
-        # Usuń wszystkie znaki oprócz cyfr, kropek i przecinków
+        # Remove all characters except digits, dots and commas
         price_str = str(price_string).strip()
-        
-        # Usuń znaki walut i inne symbole
         price_str = re.sub(r'[^\d.,]', '', price_str)
         
-        # Zamień przecinek na kropkę jeśli jest na końcu (format europejski)
+        # Replace comma with dot if it's at the end (European format)
         if ',' in price_str and '.' not in price_str:
             price_str = price_str.replace(',', '.')
         elif ',' in price_str and '.' in price_str:
-            # Jeśli są oba, usuń przecinek (prawdopodobnie separator tysięcy)
+            # If both are present, remove comma (probably thousands separator)
             price_str = price_str.replace(',', '')
         
         if price_str:
@@ -238,21 +228,22 @@ def get_or_create_author(first_name, last_name):
         return None
     
     # Try to find existing author
-    if first_name:
-        author, created = Author.objects.get_or_create(
-            first_name=first_name,
-            last_name=last_name
-        )
-    else:
-        author, created = Author.objects.get_or_create(
-            last_name=last_name,
-            defaults={'first_name': ''}
-        )
-    
-    if created:
-        print(f"    ✨ Created author: {author.full_name}")
-    
-    return author
+    try:
+        if first_name:
+            author, created = Author.objects.get_or_create(
+                first_name=first_name,
+                last_name=last_name
+            )
+        else:
+            author, created = Author.objects.get_or_create(
+                last_name=last_name,
+                defaults={'first_name': ''}
+            )
+        
+        return author
+    except Exception as e:
+        print(f"⚠️  Error creating author {first_name} {last_name}: {e}")
+        return None
 
 def get_or_create_publisher(name):
     """Get or create publisher"""
@@ -263,12 +254,12 @@ def get_or_create_publisher(name):
     if not name:
         return None
     
-    publisher, created = Publisher.objects.get_or_create(name=name)
-    
-    if created:
-        print(f"    ✨ Created publisher: {name}")
-    
-    return publisher
+    try:
+        publisher, created = Publisher.objects.get_or_create(name=name)
+        return publisher
+    except Exception as e:
+        print(f"⚠️  Error creating publisher {name}: {e}")
+        return None
 
 def get_or_create_category(name):
     """Get or create category"""
@@ -279,12 +270,12 @@ def get_or_create_category(name):
     if not name:
         return None
     
-    category, created = Category.objects.get_or_create(name=name)
-    
-    if created:
-        print(f"    ✨ Created category: {name}")
-    
-    return category
+    try:
+        category, created = Category.objects.get_or_create(name=name)
+        return category
+    except Exception as e:
+        print(f"⚠️  Error creating category {name}: {e}")
+        return None
 
 def import_books_csv(csv_file_path):
     """Import books from CSV file to normalized database"""
@@ -301,15 +292,23 @@ def import_books_csv(csv_file_path):
     try:
         print(f"📥 Loading data from {csv_file_path}...")
         
-        # Poprawione ładowanie CSV
-        df = pd.read_csv(csv_file_path, encoding='utf-8')
-        print(f"✅ Loaded with utf-8 encoding")
+        # Try different encodings
+        encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+        df = None
         
-        if df is None or len(df.columns) < 4:
-            print("❌ Failed to load CSV file")
+        for encoding in encodings:
+            try:
+                df = pd.read_csv(csv_file_path, encoding=encoding)
+                print(f"✅ Loaded with {encoding} encoding")
+                break
+            except UnicodeDecodeError:
+                continue
+        
+        if df is None:
+            print("❌ Failed to load CSV file with any encoding")
             return False
         
-        # 🚨 OGRANICZENIE TESTOWE - USUŃ DLA PEŁNEGO IMPORTU
+        # 🚨 OGRANICZENIE TESTOWE
         if TEST_BOOK_LIMIT and len(df) > TEST_BOOK_LIMIT:
             df = df.head(TEST_BOOK_LIMIT)
             print(f"🚨 Limited to {TEST_BOOK_LIMIT} books for testing")
@@ -317,7 +316,7 @@ def import_books_csv(csv_file_path):
         print(f"📊 Processing {len(df)} records")
         print(f"📋 Columns: {list(df.columns)}")
         
-        # Mapowanie kolumn (elastyczne)
+        # Column mapping (flexible)
         column_mapping = {
             'title': ['Title', 'title', 'book_title'],
             'authors': ['Authors', 'authors', 'author'],
@@ -329,7 +328,7 @@ def import_books_csv(csv_file_path):
             'publish_year': ['Publish_Year', 'publish_year', 'Publish Date (Year)'],
         }
         
-        # Znajdź odpowiednie kolumny
+        # Find appropriate columns
         cols = {}
         for field, possible_names in column_mapping.items():
             for name in possible_names:
@@ -339,7 +338,7 @@ def import_books_csv(csv_file_path):
         
         print(f"🗂️  Mapped columns: {cols}")
         
-        # Sprawdź wymagane kolumny
+        # Check required columns
         if 'title' not in cols:
             print("❌ No title column found")
             return False
@@ -354,29 +353,35 @@ def import_books_csv(csv_file_path):
             'errors': []
         }
         
-        # Cache dla wydajności
+        # Cache for performance
         author_cache = {}
         publisher_cache = {}
         category_cache = {}
         
+        print("🔄 Starting book import...")
+        
         with transaction.atomic():
             for index, row in df.iterrows():
                 try:
-                    # Extract basic data z poprawnym mapowaniem
+                    # Show progress
+                    if (index + 1) % 100 == 0:
+                        print(f"📖 Processed {index + 1}/{len(df)} books...")
+                    
+                    # Extract basic data
                     title = clean_text(row.get(cols['title']))
                     authors_string = clean_text(row.get(cols.get('authors')))
                     description = clean_text(row.get(cols.get('description')))
                     category_string = clean_text(row.get(cols.get('category')))
                     publisher_string = clean_text(row.get(cols.get('publisher')))
                     
-                    # Poprawne parsowanie ceny
+                    # Parse price
                     price = None
                     if 'price' in cols:
                         price_value = row.get(cols['price'])
                         if pd.notna(price_value) and str(price_value).strip():
                             price = parse_price(str(price_value))
                     
-                    # Poprawne parsowanie miesiąca i roku
+                    # Parse month and year
                     publish_month = None
                     if 'publish_month' in cols:
                         month_value = row.get(cols['publish_month'])
@@ -395,15 +400,8 @@ def import_books_csv(csv_file_path):
                                 pass
                     
                     if not title:
-                        if (index + 1) % 10000 == 0:
-                            print(f"     ⚠️  Row {index + 1}: Skipped - missing title")
                         stats['books_skipped'] += 1
                         continue
-                    
-                    if (index + 1) % 100 == 0:
-                        print(f"📖 Processing book {index + 1}/{len(df)}: {title[:50]}...")
-                        if price or publish_month or publish_year:
-                            print(f"    💰 Price: {price}, 📅 Date: {publish_month} {publish_year}")
                     
                     # Check if book already exists
                     book = None
@@ -527,10 +525,12 @@ def import_books_csv(csv_file_path):
         
     except Exception as e:
         print(f"💥 Critical error during book import: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
-def generate_users_with_preferences(num_users=100):  # Zmniejszona liczba dla testów
-    """Generate users with preferences based on available categories and authors"""
+def generate_users_with_preferences(num_users=100):
+    """Generate users with preferences"""
     
     print(f"\n👥 GENERATING {num_users} USERS WITH PREFERENCES")
     print("=" * 60)
@@ -554,12 +554,13 @@ def generate_users_with_preferences(num_users=100):  # Zmniejszona liczba dla te
             'errors': []
         }
         
+        print("🔄 Creating users...")
+        
         with transaction.atomic():
-            
             for i in range(num_users):
                 try:
-                    if (i + 1) % 50 == 0:
-                        print(f"👤 Creating user {i + 1}/{num_users}...")
+                    if (i + 1) % 25 == 0:
+                        print(f"👤 Created {i + 1}/{num_users} users...")
                     
                     # Generate user data
                     username = fake.user_name()
@@ -606,8 +607,6 @@ def generate_users_with_preferences(num_users=100):  # Zmniejszona liczba dla te
                 except Exception as e:
                     error_msg = f"Error creating user {i + 1}: {str(e)}"
                     stats['errors'].append(error_msg)
-                    if len(stats['errors']) <= 10:
-                        print(f"    ❌ {error_msg}")
                     continue
         
         print("\n" + "=" * 60)
@@ -618,12 +617,15 @@ def generate_users_with_preferences(num_users=100):  # Zmniejszona liczba dla te
         
         return True
         
+    except ImportError:
+        print("⚠️  Faker library not available. Skipping user generation.")
+        return True
     except Exception as e:
         print(f"💥 Critical error during user generation: {e}")
         return False
 
-def generate_sample_reviews(num_reviews=200):  # Zmniejszona liczba dla testów
-    """Generate sample reviews based on user preferences"""
+def generate_sample_reviews(num_reviews=200):
+    """Generate sample reviews"""
     
     print(f"\n⭐ GENERATING {num_reviews} SAMPLE REVIEWS")
     print("=" * 60)
@@ -658,12 +660,13 @@ def generate_sample_reviews(num_reviews=200):  # Zmniejszona liczba dla testów
             "Good book for fans of this genre."
         ]
         
+        print("🔄 Creating reviews...")
+        
         with transaction.atomic():
-            
             for i in range(num_reviews):
                 try:
                     if (i + 1) % 50 == 0:
-                        print(f"⭐ Creating review {i + 1}/{num_reviews}...")
+                        print(f"⭐ Created {i + 1}/{num_reviews} reviews...")
                     
                     user = random.choice(users)
                     book = random.choice(books)
@@ -695,8 +698,6 @@ def generate_sample_reviews(num_reviews=200):  # Zmniejszona liczba dla testów
                 except Exception as e:
                     error_msg = f"Error creating review {i + 1}: {str(e)}"
                     stats['errors'].append(error_msg)
-                    if len(stats['errors']) <= 10:
-                        print(f"    ❌ {error_msg}")
                     continue
         
         print("\n" + "=" * 60)
@@ -706,6 +707,9 @@ def generate_sample_reviews(num_reviews=200):  # Zmniejszona liczba dla testów
         
         return True
         
+    except ImportError:
+        print("⚠️  Faker library not available. Skipping review generation.")
+        return True
     except Exception as e:
         print(f"💥 Critical error during review generation: {e}")
         return False
@@ -795,13 +799,15 @@ def main():
         print(f"🚨 TESTOWY TRYB: ograniczenie do {TEST_BOOK_LIMIT} książek")
     print("=" * 70)
     
-    # Import required modules
+    # Check if data already exists
     try:
-        import random
-        global random
-    except ImportError:
-        print("❌ Missing required modules")
-        sys.exit(1)
+        existing_books = Book.objects.count()
+        if existing_books > 0:
+            print(f"📚 Database already contains {existing_books} books")
+            print("✅ Skipping import - data already exists")
+            return True
+    except Exception as e:
+        print(f"⚠️  Error checking existing data: {e}")
     
     # 1. Wait for database
     if not wait_for_database():
@@ -816,70 +822,122 @@ def main():
     print("STAGE 1: BOOK IMPORT")
     print("🔸" * 35)
     
-    books_csv_paths = [
+    # Search for CSV files in various locations
+    csv_search_paths = [
         '/app/database/BooksDatasetProcessed.csv',
-        '/data/BooksDatasetProcessed.csv',
+        '/app/database/BooksDatasetClean.csv',
         '/app/BooksDatasetProcessed.csv',
-        '/data/BooksDatasetClean.csv',
         '/app/BooksDatasetClean.csv',
-        '/data/Books.csv',
-        '/app/Books.csv'
+        '/data/BooksDatasetProcessed.csv',
+        '/data/BooksDatasetClean.csv',
+        'database/BooksDatasetProcessed.csv',
+        'database/BooksDatasetClean.csv',
+        'BooksDatasetProcessed.csv',
+        'BooksDatasetClean.csv',
     ]
     
     books_imported = False
-    for csv_path in books_csv_paths:
+    found_file = None
+    
+    for csv_path in csv_search_paths:
         if os.path.exists(csv_path):
+            found_file = csv_path
             print(f"📁 Found book file: {csv_path}")
+            
+            # Try to import
             if import_books_csv(csv_path):
                 books_imported = True
                 break
+            else:
+                print(f"❌ Failed to import from {csv_path}")
     
     if not books_imported:
-        print("❌ No book file found for import")
-        print(f"🔍 Checked paths: {books_csv_paths}")
-        print("📁 Contents of /app:")
+        print("❌ No book file found for import or import failed")
+        print(f"🔍 Searched paths:")
+        for path in csv_search_paths:
+            exists = "✅" if os.path.exists(path) else "❌"
+            print(f"     {exists} {path}")
+        
+        print("\n📁 Current directory contents:")
         try:
-            for f in os.listdir('/app'):
-                print(f"     - {f}")
-        except:
-            print("     No access to /app")
-        sys.exit(1)
+            current_dir = os.getcwd()
+            print(f"PWD: {current_dir}")
+            for item in os.listdir(current_dir):
+                print(f"     - {item}")
+        except Exception as e:
+            print(f"     Error listing directory: {e}")
+        
+        print("\n📁 /app directory contents:")
+        try:
+            for item in os.listdir('/app'):
+                print(f"     - {item}")
+        except Exception as e:
+            print(f"     Error listing /app: {e}")
+        
+        return False
     
     # 4. Generate users with preferences
     print("\n" + "🔸" * 35)
     print("STAGE 2: USER GENERATION")
     print("🔸" * 35)
     
-    if not generate_users_with_preferences():
-        print("⚠️  User generation failed")
+    try:
+        if not generate_users_with_preferences():
+            print("⚠️  User generation failed, but continuing...")
+    except Exception as e:
+        print(f"⚠️  User generation error: {e}")
     
     # 5. Generate sample reviews
     print("\n" + "🔸" * 35)
     print("STAGE 3: REVIEW GENERATION")
     print("🔸" * 35)
     
-    if not generate_sample_reviews():
-        print("⚠️  Review generation failed")
+    try:
+        if not generate_sample_reviews():
+            print("⚠️  Review generation failed, but continuing...")
+    except Exception as e:
+        print(f"⚠️  Review generation error: {e}")
     
     # 6. Analyze results
     print("\n" + "🔸" * 35)
     print("STAGE 4: RESULTS ANALYSIS")
     print("🔸" * 35)
     
-    analyze_import_results()
+    try:
+        analyze_import_results()
+    except Exception as e:
+        print(f"⚠️  Analysis error: {e}")
     
     print("\n🎉 NORMALIZED IMPORT COMPLETED SUCCESSFULLY!")
     print("✅ Database ready with normalized schema")
     
     if TEST_BOOK_LIMIT:
-        print(f"\n UWAGA: Tryb testowy - zaimportowano tylko {TEST_BOOK_LIMIT} książek")
-        print(" Aby zaimportować wszystkie książki:")
+        print(f"\n🚨 UWAGA: Tryb testowy - zaimportowano tylko {TEST_BOOK_LIMIT} książek")
+        print("🔧 Aby zaimportować wszystkie książki:")
         print("   1. Zmień TEST_BOOK_LIMIT = None w pliku")
         print("   2. Uruchom ponownie import")
     
-    print("\n🌐 Sprawdź wyniki:")
+    print("\n🌐 System gotowy!")
     print("🔗 Django Admin: http://localhost:8000/admin/")
-    print("🔗 pgAdmin: http://localhost:5050/")
+    print("🔗 API Status: http://localhost:8000/api/status/")
+    print("🔗 Featured Books: http://localhost:8000/api/books/featured/")
+    
+    return True
 
 if __name__ == "__main__":
-    main()
+    try:
+        success = main()
+        if success:
+            print("\n✅ Import completed successfully!")
+            sys.exit(0)
+        else:
+            print("\n❌ Import failed!")
+            sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n🛑 Import interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n💥 Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
