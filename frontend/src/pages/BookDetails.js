@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import SimilarBooks from '../components/SimilarBooks';
 
 const BookDetails = () => {
   const { id } = useParams();
@@ -357,12 +358,25 @@ const BookDetails = () => {
           </div>
         </div>
 
-        {/* Related books section placeholder */}
+        {/* Similar Books section */}
+        <div className="mt-8">
+          <SimilarBooks bookId={book.id} limit={8} />
+        </div>
+
+        {/* Reviews section remains the same */}
         <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Similar Books</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">Reviews & Ratings</h2>
           <div className="text-center py-8 text-gray-500">
-            <div className="text-4xl mb-2">🔍</div>
-            <p>Similar book recommendations coming soon...</p>
+            <div className="text-4xl mb-2">⭐</div>
+            <p className="mb-4">
+              {ratingsCount > 0 
+                ? `This book has ${ratingsCount} review${ratingsCount !== 1 ? 's' : ''} with an average rating of ${rating.toFixed(1)}/10`
+                : 'No reviews yet. Be the first to review this book!'
+              }
+            </p>
+            <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
+              Write a Review
+            </button>
           </div>
         </div>
 
