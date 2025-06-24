@@ -7,6 +7,8 @@ from django.core.paginator import Paginator
 from django.db.models import Q, Avg, Count
 import json
 
+from ml_api.views import book_recommendations, similarity_stats, recalculate_similarities
+
 def health_check(request):
     """Simple health check endpoint"""
     return JsonResponse({
@@ -346,11 +348,16 @@ urlpatterns = [
     path('', health_check, name='health_check'),
     path('api/status/', api_status, name='api_status'),
     path('api/health/', health_check, name='api_health'),
-    
-    # WORKING ENDPOINTS
     path('api/books/featured/', featured_books, name='featured_books'),
     path('api/books/top-rated/', top_rated_books, name='top_rated_books'),  
     path('api/books/<int:book_id>/', book_detail, name='book_detail'),  
     path('api/books/', book_list, name='book_list'),
     path('api/categories/', categories_list, name='categories_list'),
+    
+    # Similarity endpoints
+    path('api/books/<int:book_id>/recommendations/', book_recommendations, name='book_recommendations'),
+    path('api/books/<int:book_id>/similar/', book_recommendations, name='similar_books'),  # Alias
+    path('api/similarities/stats/', similarity_stats, name='similarity_stats'),
+    path('api/similarities/recalculate/', recalculate_similarities, name='recalculate_all_similarities'),
+    path('api/similarities/recalculate/<int:book_id>/', recalculate_similarities, name='recalculate_book_similarities'),
 ]
