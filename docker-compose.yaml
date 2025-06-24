@@ -22,22 +22,9 @@ services:
       POSTGRES_PORT: 5432
     volumes:
       - ./backend:/app
+      - ./data:/data:ro
     depends_on:
       - db
-    command: >
-      sh -c "
-        echo 'Waiting for database...' &&
-        while ! nc -z db 5432; do
-          echo 'Database not ready, waiting...' &&
-          sleep 2
-        done &&
-        echo 'Database ready!' &&
-        echo 'Running migrations...' &&
-        python manage.py makemigrations ml_api &&
-        python manage.py migrate &&
-        echo 'Starting Django development server...' &&
-        python manage.py runserver 0.0.0.0:8000
-      "
 
   frontend:
     build: ./frontend
