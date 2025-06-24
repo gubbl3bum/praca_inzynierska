@@ -1,5 +1,3 @@
-// frontend/src/pages/Catalog.js - Poprawiona wersja z działającą paginacją
-
 import React, { useState, useEffect } from 'react';
 import BookCard from '../components/BookCard';
 import api from '../services/api';
@@ -18,7 +16,6 @@ const Catalog = () => {
     sort: '-created_at'
   });
   
-  // POPRAWIONA PAGINACJA - używamy struktury z backendu
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -39,10 +36,11 @@ const Catalog = () => {
     { value: '-author', label: 'Author Z-A' }
   ];
 
-  // POPRAWIONA: Fetch books from API
+  // Fetch books from API
   const fetchBooks = async (page = 1) => {
     try {
       setLoading(true);
+      setError(null);
       
       // Prepare parameters
       const params = {
@@ -61,13 +59,14 @@ const Catalog = () => {
       console.log('Fetching books with params:', params);
       const response = await api.books.getBooks(params);
       
-      // POPRAWIONE: Sprawdź strukturę odpowiedzi
       console.log('API response:', response);
       
-      if (response.results) {
-        setBooks(response.results);
+      if (response.status === 'success' && response.results) {
+        // Normalizuj dane książek
+        const normalizedBooks = response.results.map(api.data.normalizeBook).filter(Boolean);
+        setBooks(normalizedBooks);
         
-        // POPRAWIONE: Użyj danych z API do ustawienia paginacji
+        // Ustaw paginację
         setPagination({
           currentPage: response.current_page || page,
           totalPages: response.num_pages || 1,
@@ -79,15 +78,13 @@ const Catalog = () => {
           previousPage: response.previous_page
         });
       } else {
-        // Fallback jeśli API zwraca inną strukturę
-        setBooks(Array.isArray(response) ? response : []);
-        setPagination(prev => ({ ...prev, currentPage: page }));
+        throw new Error(response.message || 'Failed to fetch books');
       }
 
-      setError(null);
     } catch (error) {
       console.error('Error fetching books:', error);
-      setError('Failed to load book catalog');
+      const errorMessage = api.handleError(error, 'Failed to load book catalog');
+      setError(errorMessage);
       setBooks([]);
       setPagination(prev => ({ ...prev, currentPage: page }));
     } finally {
@@ -115,7 +112,7 @@ const Catalog = () => {
     fetchBooks(1);
   };
 
-  // POPRAWIONA: Handle page change
+  // Handle page change
   const handlePageChange = (newPage) => {
     console.log('Changing to page:', newPage);
     fetchBooks(newPage);
@@ -137,20 +134,12 @@ const Catalog = () => {
 
   const handleBookClick = (book) => {
     console.log('Clicked book:', book);
+    // Navigation jest obsługiwana w BookCard
   };
 
-  // POPRAWIONA: Generate page numbers for pagination
+  // Generate page numbers for pagination
   const generatePageNumbers = () => {
-    const pages = [];
-    const maxVisible = 5;
-    const start = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
-    const end = Math.min(pagination.totalPages, start + maxVisible - 1);
-    
-    for (let i = start; i <= end; i++) {
-      pages.push(i);
-    }
-    
-    return pages;
+    return api.pagination.generatePageNumbers(pagination.currentPage, pagination.totalPages, 5);
   };
 
   return (
@@ -162,13 +151,13 @@ const Catalog = () => {
           <h1 className="text-4xl font-bold text-gray-800 mb-2">Book Catalog</h1>
           <p className="text-gray-600">
             Browse and filter our collection 
-            {pagination.totalItems > 0 && ` of ${pagination.totalItems} books`}
+            {pagination.totalItems > 0 && ` of ${pagination.totalItems.toLocaleString()} books`}
           </p>
         </div>
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">Filters</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">Filters & Search</h2>
           
           {/* Search */}
           <form onSubmit={handleSearch} className="mb-6">
@@ -176,7 +165,7 @@ const Catalog = () => {
               <div className="flex-1">
                 <input
                   type="text"
-                  placeholder="Search books, authors..."
+                  placeholder="Search books, authors, descriptions..."
                   value={filters.search}
                   onChange={(e) => handleFilterChange('search', e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -323,7 +312,7 @@ const Catalog = () => {
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
             <div className="text-red-800 text-center">
               <div className="text-4xl mb-2">⚠️</div>
-              <h3 className="text-lg font-semibold mb-2">Error Occurred</h3>
+              <h3 className="text-lg font-semibold mb-2">Error Loading Books</h3>
               <p className="mb-4">{error}</p>
               <button
                 onClick={() => fetchBooks(pagination.currentPage)}
@@ -339,21 +328,55 @@ const Catalog = () => {
         {!loading && !error && (
           <>
             {/* Results info */}
-            <div className="mb-6 flex justify-between items-center">
-              <p className="text-gray-600">
-                {books.length > 0 ? (
-                  <>
-                    Found {pagination.totalItems} books
-                    {pagination.totalPages > 1 && (
-                      <> (page {pagination.currentPage} of {pagination.totalPages})</>
+            <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <p className="text-gray-600">
+                  {books.length > 0 ? (
+                    <>
+                      Showing {((pagination.currentPage - 1) * pagination.pageSize) + 1}-{Math.min(pagination.currentPage * pagination.pageSize, pagination.totalItems)} of {pagination.totalItems.toLocaleString()} books
+                      {pagination.totalPages > 1 && (
+                        <> (page {pagination.currentPage} of {pagination.totalPages})</>
+                      )}
+                    </>
+                  ) : (
+                    'No results found'
+                  )}
+                </p>
+                
+                {/* Active filters display */}
+                {(filters.search || filters.category || filters.author || filters.year_from || filters.year_to || filters.rating_min) && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="text-sm text-gray-500">Active filters:</span>
+                    {filters.search && (
+                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
+                        Search: "{filters.search}"
+                      </span>
                     )}
-                  </>
-                ) : (
-                  'No results found'
+                    {filters.category && (
+                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
+                        Category: {filters.category}
+                      </span>
+                    )}
+                    {filters.author && (
+                      <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-sm">
+                        Author: {filters.author}
+                      </span>
+                    )}
+                    {(filters.year_from || filters.year_to) && (
+                      <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded text-sm">
+                        Year: {filters.year_from || '?'}-{filters.year_to || '?'}
+                      </span>
+                    )}
+                    {filters.rating_min && (
+                      <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm">
+                        Min Rating: {filters.rating_min}+
+                      </span>
+                    )}
+                  </div>
                 )}
-              </p>
+              </div>
               
-              {/* DEBUG INFO - usuń w produkcji */}
+              {/* Performance info */}
               <div className="text-xs text-gray-400">
                 Page: {pagination.currentPage} | 
                 Has Next: {pagination.hasNext ? 'Yes' : 'No'} | 
@@ -361,7 +384,7 @@ const Catalog = () => {
               </div>
             </div>
 
-            {/* Book list */}
+            {/* Book grid */}
             {books.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-8">
                 {books
@@ -382,18 +405,29 @@ const Catalog = () => {
                   No Books Found
                 </h3>
                 <p className="text-gray-500 mb-4">
-                  Try changing your filters or search terms
+                  {filters.search || filters.category || filters.author || filters.year_from || filters.year_to || filters.rating_min 
+                    ? 'Try adjusting your filters or search terms'
+                    : 'No books are available in the catalog at the moment'
+                  }
                 </p>
-                <button
-                  onClick={resetFilters}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
-                >
-                  Clear Filters
-                </button>
+                <div className="flex flex-wrap justify-center gap-4">
+                  <button
+                    onClick={resetFilters}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+                  >
+                    Clear All Filters
+                  </button>
+                  <button
+                    onClick={() => fetchBooks(1)}
+                    className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg"
+                  >
+                    Refresh
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* POPRAWIONA PAGINACJA */}
+            {/* Pagination */}
             {pagination.totalPages > 1 && (
               <div className="flex justify-center items-center gap-2 py-8">
                 {/* Previous button */}
@@ -408,6 +442,21 @@ const Catalog = () => {
                 >
                   ← Previous
                 </button>
+
+                {/* First page */}
+                {pagination.currentPage > 3 && (
+                  <>
+                    <button
+                      onClick={() => handlePageChange(1)}
+                      className="px-4 py-2 rounded-lg bg-white text-gray-700 hover:bg-gray-100 border border-gray-300"
+                    >
+                      1
+                    </button>
+                    {pagination.currentPage > 4 && (
+                      <span className="px-2 text-gray-500">...</span>
+                    )}
+                  </>
+                )}
 
                 {/* Page numbers */}
                 {generatePageNumbers().map(pageNum => (
@@ -424,6 +473,21 @@ const Catalog = () => {
                   </button>
                 ))}
 
+                {/* Last page */}
+                {pagination.currentPage < pagination.totalPages - 2 && (
+                  <>
+                    {pagination.currentPage < pagination.totalPages - 3 && (
+                      <span className="px-2 text-gray-500">...</span>
+                    )}
+                    <button
+                      onClick={() => handlePageChange(pagination.totalPages)}
+                      className="px-4 py-2 rounded-lg bg-white text-gray-700 hover:bg-gray-100 border border-gray-300"
+                    >
+                      {pagination.totalPages}
+                    </button>
+                  </>
+                )}
+
                 {/* Next button */}
                 <button
                   onClick={() => handlePageChange(pagination.currentPage + 1)}
@@ -436,6 +500,39 @@ const Catalog = () => {
                 >
                   Next →
                 </button>
+              </div>
+            )}
+
+            {/* Quick stats */}
+            {books.length > 0 && (
+              <div className="mt-8 bg-gradient-to-r from-blue-600 to-purple-700 rounded-lg p-6 text-white">
+                <h3 className="text-lg font-semibold mb-4">📊 Catalog Statistics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">
+                      {pagination.totalItems.toLocaleString()}
+                    </div>
+                    <div className="text-blue-100 text-sm">Total Books</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">
+                      {books.length > 0 ? (books.reduce((sum, book) => sum + (book.average_rating || 0), 0) / books.length).toFixed(1) : '0.0'}
+                    </div>
+                    <div className="text-blue-100 text-sm">Avg Rating (This Page)</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">
+                      {books.reduce((sum, book) => sum + (book.ratings_count || 0), 0).toLocaleString()}
+                    </div>
+                    <div className="text-blue-100 text-sm">Total Reviews (This Page)</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">
+                      {new Set(books.flatMap(book => book.categories || [])).size}
+                    </div>
+                    <div className="text-blue-100 text-sm">Categories (This Page)</div>
+                  </div>
+                </div>
               </div>
             )}
           </>

@@ -1,5 +1,3 @@
-// frontend/src/pages/Top100.js - Poprawiona wersja z działającą paginacją
-
 import React, { useState, useEffect } from 'react';
 import BookCard from '../components/BookCard';
 import api from '../services/api';
@@ -11,7 +9,6 @@ const Top100 = () => {
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
   const [filter, setFilter] = useState('all'); // 'all', 'recent', 'classic'
   
-  // DODANA PAGINACJA
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -28,10 +25,11 @@ const Top100 = () => {
     { value: 'classic', label: 'Classics (pre-2000)', icon: '📜' }
   ];
 
-  // POPRAWIONA: Fetch top books with pagination
+  // Fetch top books with pagination
   const fetchTopBooks = async (page = 1) => {
     try {
       setLoading(true);
+      setError(null);
       
       // Prepare API parameters
       const params = {
@@ -42,15 +40,16 @@ const Top100 = () => {
 
       console.log('Fetching top books with params:', params);
       
-      // UŻYWAMY NOWEGO ENDPOINTU
       const response = await api.books.getTopRated(params);
       
       console.log('Top books API response:', response);
       
-      if (response.results) {
-        setBooks(response.results);
+      if (response.status === 'success' && response.results) {
+        // Normalizuj dane książek
+        const normalizedBooks = response.results.map(api.data.normalizeBook).filter(Boolean);
+        setBooks(normalizedBooks);
         
-        // POPRAWIONE: Ustaw paginację z odpowiedzi API
+        // Ustaw paginację
         setPagination({
           currentPage: response.current_page || page,
           totalPages: response.num_pages || 1,
@@ -62,15 +61,13 @@ const Top100 = () => {
           previousPage: response.previous_page
         });
       } else {
-        // Fallback jeśli API zwraca inną strukturę
-        setBooks(Array.isArray(response) ? response.slice(0, 100) : []);
-        setPagination(prev => ({ ...prev, currentPage: page }));
+        throw new Error(response.message || 'Failed to fetch top books');
       }
 
-      setError(null);
     } catch (error) {
       console.error('Error fetching top books:', error);
-      setError('Failed to load book rankings');
+      const errorMessage = api.handleError(error, 'Failed to load book rankings');
+      setError(errorMessage);
       setBooks([]);
       setPagination(prev => ({ ...prev, currentPage: page }));
     } finally {
@@ -84,54 +81,42 @@ const Top100 = () => {
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   }, [filter]);
 
-  // DODANA: Handle page change
+  // Handle page change
   const handlePageChange = (newPage) => {
     console.log('Changing to page:', newPage);
     fetchTopBooks(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // DODANA: Generate page numbers for pagination
+  // Generate page numbers for pagination
   const generatePageNumbers = () => {
-    const pages = [];
-    const maxVisible = 5;
-    const start = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
-    const end = Math.min(pagination.totalPages, start + maxVisible - 1);
-    
-    for (let i = start; i <= end; i++) {
-      pages.push(i);
-    }
-    
-    return pages;
+    return api.pagination.generatePageNumbers(pagination.currentPage, pagination.totalPages, 5);
   };
 
   const handleBookClick = (book) => {
     console.log('Clicked book:', book);
+    // Navigation jest obsługiwana w BookCard
   };
 
   const BookListItem = ({ book, position }) => {
     // Calculate real position based on pagination
     const realPosition = (pagination.currentPage - 1) * pagination.pageSize + position;
     
-    // Funkcja do renderowania gwiazdek dla skali 0-10
+    // Renderowanie gwiazdek dla skali 0-10
     const renderStars = (rating) => {
       const stars = [];
-      // Konwertuj ocenę 0-10 na skalę 0-5 gwiazdek
-      const scaledRating = rating / 2;
+      const scaledRating = rating / 2; // Konwersja z 0-10 na 0-5
       const fullStars = Math.floor(scaledRating);
       const hasHalfStar = scaledRating % 1 >= 0.5;
       
-      // Pełne gwiazdki
       for (let i = 0; i < fullStars; i++) {
         stars.push(<span key={i} className="text-yellow-400 text-lg">★</span>);
       }
       
-      // Półgwiazdka
       if (hasHalfStar) {
         stars.push(<span key="half" className="text-yellow-400 text-lg">☆</span>);
       }
       
-      // Puste gwiazdki
       const remainingStars = 5 - Math.ceil(scaledRating);
       for (let i = 0; i < remainingStars; i++) {
         stars.push(<span key={`empty-${i}`} className="text-gray-300 text-lg">☆</span>);
@@ -152,9 +137,9 @@ const Top100 = () => {
 
         {/* Cover */}
         <div className="flex-shrink-0 w-16 h-24 bg-gray-200 rounded overflow-hidden">
-          {book.best_cover_medium || book.cover_url || book.image_url_m ? (
+          {book.best_cover_medium || book.cover_image_url || book.image_url_m ? (
             <img 
-              src={book.best_cover_medium || book.cover_url || book.image_url_m} 
+              src={book.best_cover_medium || book.cover_image_url || book.image_url_m} 
               alt={book.title}
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -165,7 +150,7 @@ const Top100 = () => {
           ) : null}
           <div 
             className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm"
-            style={{ display: (book.best_cover_medium || book.cover_url || book.image_url_m) ? 'none' : 'flex' }}
+            style={{ display: (book.best_cover_medium || book.cover_image_url || book.image_url_m) ? 'none' : 'flex' }}
           >
             📚
           </div>
@@ -177,10 +162,10 @@ const Top100 = () => {
             {book.title}
           </h3>
           <p className="text-gray-600 mb-2 truncate">
-            {book.author}
+            by {book.author || book.authors || 'Unknown Author'}
           </p>
           
-          {/* ZAKTUALIZOWANY: Rating z nowym systemem 0-10 */}
+          {/* Rating */}
           <div className="flex items-center gap-2">
             <div className="flex gap-0.5">
               {renderStars(book.average_rating || 0)}
@@ -198,14 +183,15 @@ const Top100 = () => {
 
         {/* Additional info */}
         <div className="flex-shrink-0 text-right">
-          {book.publication_year && (
+          {book.publish_year && (
             <div className="text-sm text-gray-500 mb-1">
-              {book.publication_year}
+              {book.publish_year}
             </div>
           )}
-          {book.categories && (
+          {book.categories && book.categories.length > 0 && (
             <div className="text-xs text-gray-400 max-w-24 truncate">
-              {Array.isArray(book.categories) ? book.categories.join(', ') : book.categories}
+              {book.categories.slice(0, 2).join(', ')}
+              {book.categories.length > 2 && '...'}
             </div>
           )}
         </div>
@@ -224,6 +210,7 @@ const Top100 = () => {
           </h1>
           <p className="text-gray-600 text-lg">
             The highest rated books according to our users
+            {pagination.totalItems > 0 && ` (${pagination.totalItems.toLocaleString()} total)`}
           </p>
         </div>
 
@@ -287,7 +274,7 @@ const Top100 = () => {
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
             <div className="text-red-800 text-center">
               <div className="text-4xl mb-2">⚠️</div>
-              <h3 className="text-lg font-semibold mb-2">Error Occurred</h3>
+              <h3 className="text-lg font-semibold mb-2">Error Loading Rankings</h3>
               <p className="mb-4">{error}</p>
               <button
                 onClick={() => fetchTopBooks(pagination.currentPage)}
@@ -303,23 +290,32 @@ const Top100 = () => {
         {!loading && !error && (
           <>
             {/* Results info */}
-            <div className="mb-6 flex justify-between items-center">
-              <p className="text-gray-600">
-                {books.length > 0 ? (
-                  <>
-                    Top {pagination.totalItems} books 
-                    {filter === 'recent' && ' from the last 5 years'}
-                    {filter === 'classic' && ' from before 2000'}
-                    {pagination.totalPages > 1 && (
-                      <> (page {pagination.currentPage} of {pagination.totalPages})</>
-                    )}
-                  </>
-                ) : (
-                  'No results found'
-                )}
-              </p>
+            <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <p className="text-gray-600">
+                  {books.length > 0 ? (
+                    <>
+                      Top {((pagination.currentPage - 1) * pagination.pageSize) + 1}-{Math.min(pagination.currentPage * pagination.pageSize, pagination.totalItems)} books 
+                      {filter === 'recent' && ' from the last 5 years'}
+                      {filter === 'classic' && ' from before 2000'}
+                      {pagination.totalPages > 1 && (
+                        <> (page {pagination.currentPage} of {pagination.totalPages})</>
+                      )}
+                    </>
+                  ) : (
+                    'No results found'
+                  )}
+                </p>
+                
+                {/* Filter info */}
+                <div className="mt-1 text-sm text-gray-500">
+                  {filter === 'all' && 'Showing books from all time periods'}
+                  {filter === 'recent' && 'Showing books published in the last 5 years (2019-2024)'}
+                  {filter === 'classic' && 'Showing books published before 2000'}
+                </div>
+              </div>
               
-              {/* DEBUG INFO - usuń w produkcji */}
+              {/* Performance info */}
               <div className="text-xs text-gray-400">
                 Page: {pagination.currentPage} | 
                 Has Next: {pagination.hasNext ? 'Yes' : 'No'} | 
@@ -341,7 +337,7 @@ const Top100 = () => {
                         onClick={handleBookClick}
                       />
                       {/* Position badge */}
-                      <div className="absolute -top-2 -left-2 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
+                      <div className="absolute -top-2 -left-2 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg z-10">
                         {realPosition}
                       </div>
                     </div>
@@ -371,18 +367,28 @@ const Top100 = () => {
                   No Books in Rankings
                 </h3>
                 <p className="text-gray-500 mb-4">
-                  Try changing the time filter
+                  {filter === 'recent' && 'No highly rated books found from the last 5 years.'}
+                  {filter === 'classic' && 'No highly rated classic books found.'}
+                  {filter === 'all' && 'No books with ratings found in the database.'}
                 </p>
-                <button
-                  onClick={() => setFilter('all')}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
-                >
-                  Show All
-                </button>
+                <div className="flex flex-wrap justify-center gap-4">
+                  <button
+                    onClick={() => setFilter('all')}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+                  >
+                    Show All Time
+                  </button>
+                  <button
+                    onClick={() => fetchTopBooks(1)}
+                    className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg"
+                  >
+                    Refresh
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* DODANA PAGINACJA */}
+            {/* Pagination */}
             {pagination.totalPages > 1 && (
               <div className="flex justify-center items-center gap-2 py-8">
                 {/* Previous button */}
@@ -427,34 +433,40 @@ const Top100 = () => {
                 </button>
               </div>
             )}
-          </>
-        )}
 
-        {/* Statistics at bottom */}
-        {!loading && !error && books.length > 0 && (
-          <div className="mt-12 bg-gradient-to-r from-blue-600 to-purple-700 rounded-lg p-8 text-white text-center">
-            <h3 className="text-2xl font-bold mb-4">📊 Ranking Statistics</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <div className="text-3xl font-bold">
-                  {books.length > 0 ? (books.reduce((sum, book) => sum + (book.average_rating || 0), 0) / books.length).toFixed(1) : '0.0'}⭐
+            {/* Statistics at bottom */}
+            {books.length > 0 && (
+              <div className="mt-12 bg-gradient-to-r from-blue-600 to-purple-700 rounded-lg p-8 text-white text-center">
+                <h3 className="text-2xl font-bold mb-4">📊 Ranking Statistics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <div>
+                    <div className="text-3xl font-bold">
+                      {books.length > 0 ? (books.reduce((sum, book) => sum + (book.average_rating || 0), 0) / books.length).toFixed(1) : '0.0'}⭐
+                    </div>
+                    <div className="text-blue-100">Average Rating (This Page)</div>
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold">
+                      {books.reduce((sum, book) => sum + (book.ratings_count || 0), 0).toLocaleString()}
+                    </div>
+                    <div className="text-blue-100">Total Ratings (This Page)</div>
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold">
+                      {pagination.totalItems.toLocaleString()}
+                    </div>
+                    <div className="text-blue-100">Total Books in Ranking</div>
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold">
+                      {new Set(books.flatMap(book => book.categories || [])).size}
+                    </div>
+                    <div className="text-blue-100">Categories (This Page)</div>
+                  </div>
                 </div>
-                <div className="text-blue-100">Average Rating (This Page)</div>
               </div>
-              <div>
-                <div className="text-3xl font-bold">
-                  {books.reduce((sum, book) => sum + (book.ratings_count || 0), 0).toLocaleString()}
-                </div>
-                <div className="text-blue-100">Total Ratings (This Page)</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold">
-                  {pagination.totalItems}
-                </div>
-                <div className="text-blue-100">Total Books in Ranking</div>
-              </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
 
       </div>

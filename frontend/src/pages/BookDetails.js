@@ -15,21 +15,32 @@ const BookDetails = () => {
     const fetchBookDetails = async () => {
       try {
         setLoading(true);
+        setError(null);
         
         // Jeśli mamy dane książki w state (przekazane z BookCard), użyj ich
         if (location.state?.book) {
-          setBook(location.state.book);
+          console.log('Using book data from navigation state:', location.state.book);
+          const normalizedBook = api.data.normalizeBook(location.state.book);
+          setBook(normalizedBook);
           setLoading(false);
           return;
         }
         
         // W przeciwnym razie pobierz z API
-        const bookData = await api.books.getBook(id);
-        setBook(bookData);
-        setError(null);
+        console.log('Fetching book details from API for ID:', id);
+        const response = await api.books.getBook(id);
+        
+        if (response.status === 'success') {
+          const normalizedBook = api.data.normalizeBook(response);
+          setBook(normalizedBook);
+        } else {
+          throw new Error(response.message || 'Failed to fetch book details');
+        }
+        
       } catch (err) {
         console.error('Error fetching book details:', err);
-        setError('Failed to load book details');
+        const errorMessage = api.handleError(err, 'Failed to load book details');
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -72,11 +83,24 @@ const BookDetails = () => {
     return book?.best_cover_large || 
            book?.image_url_l || 
            book?.best_cover_medium || 
-           book?.cover_url || 
+           book?.cover_image_url || 
            book?.image_url_m || 
-           book?.open_library_cover_large ||
-           book?.open_library_cover_medium ||
            null;
+  };
+
+  // Format authors display
+  const getAuthorsDisplay = (book) => {
+    if (!book) return 'Unknown Author';
+    
+    if (typeof book.authors === 'string') {
+      return book.authors;
+    } else if (Array.isArray(book.authors)) {
+      return book.authors.map(a => typeof a === 'string' ? a : a.name || a.full_name || 'Unknown').join(', ');
+    } else if (book.author) {
+      return typeof book.author === 'string' ? book.author : book.author.name || book.author.full_name || 'Unknown Author';
+    }
+    
+    return 'Unknown Author';
   };
 
   if (loading) {
@@ -99,9 +123,15 @@ const BookDetails = () => {
           <p className="text-gray-600 mb-4">{error}</p>
           <button
             onClick={() => navigate(-1)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg mr-4"
           >
             Go Back
+          </button>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg"
+          >
+            Try Again
           </button>
         </div>
       </div>
@@ -128,6 +158,7 @@ const BookDetails = () => {
   const coverUrl = getBestCoverUrl(book);
   const rating = book.average_rating || 0;
   const ratingsCount = book.ratings_count || 0;
+  const authorsDisplay = getAuthorsDisplay(book);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -177,12 +208,10 @@ const BookDetails = () => {
               </h1>
               
               <p className="text-xl text-gray-600 mb-4">
-                by {book.author || (book.authors && book.authors.length > 0 
-                  ? book.authors.map(a => a.name || a).join(', ') 
-                  : 'Unknown Author')}
+                by {authorsDisplay}
               </p>
 
-              {/* Rating section - ZAKTUALIZOWANA dla skali 0-10 */}
+              {/* Rating section */}
               <div className="mb-6">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="flex gap-1">
@@ -208,11 +237,11 @@ const BookDetails = () => {
               </div>
 
               {/* Categories */}
-              {(book.categories || book.category_names) && (
+              {book.categories && book.categories.length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-gray-800 mb-2">Categories:</h3>
                   <div className="flex flex-wrap gap-2">
-                    {(book.category_names || book.categories || []).map((category, index) => (
+                    {book.categories.map((category, index) => (
                       <span 
                         key={index}
                         className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium"
@@ -226,17 +255,21 @@ const BookDetails = () => {
 
               {/* Publication info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                {book.publication_year && (
+                {book.publish_year && (
                   <div>
                     <span className="text-gray-600 font-medium">Published:</span>
-                    <span className="ml-2">{book.publication_year}</span>
+                    <span className="ml-2">
+                      {book.publish_month && `${book.publish_month} `}{book.publish_year}
+                    </span>
                   </div>
                 )}
                 
                 {book.publisher && (
                   <div>
                     <span className="text-gray-600 font-medium">Publisher:</span>
-                    <span className="ml-2">{book.publisher.name || book.publisher}</span>
+                    <span className="ml-2">
+                      {typeof book.publisher === 'string' ? book.publisher : book.publisher.name}
+                    </span>
                   </div>
                 )}
                 
@@ -247,20 +280,21 @@ const BookDetails = () => {
                   </div>
                 )}
                 
-                {book.page_count && (
+                {book.price && (
                   <div>
-                    <span className="text-gray-600 font-medium">Pages:</span>
-                    <span className="ml-2">{book.page_count}</span>
-                  </div>
-                )}
-                
-                {book.language && (
-                  <div>
-                    <span className="text-gray-600 font-medium">Language:</span>
-                    <span className="ml-2">{book.language}</span>
+                    <span className="text-gray-600 font-medium">Price:</span>
+                    <span className="ml-2 text-green-600 font-medium">${book.price}</span>
                   </div>
                 )}
               </div>
+
+              {/* Keywords */}
+              {book.keywords && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Keywords:</h3>
+                  <p className="text-gray-700 text-sm italic">{book.keywords}</p>
+                </div>
+              )}
 
               {/* Description */}
               {book.description && (
@@ -269,20 +303,6 @@ const BookDetails = () => {
                   <p className="text-gray-700 leading-relaxed">
                     {book.description}
                   </p>
-                </div>
-              )}
-
-              {/* Open Library link */}
-              {book.open_library_url && (
-                <div className="mb-6">
-                  <a
-                    href={book.open_library_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-                  >
-                    📖 View on Open Library
-                  </a>
                 </div>
               )}
 
@@ -301,16 +321,49 @@ const BookDetails = () => {
                   Write Review
                 </button>
               </div>
+
+              {/* Book metadata */}
+              {(book.created_at || book.updated_at) && (
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Book Information:</h3>
+                  <div className="text-sm text-gray-500 space-y-1">
+                    {book.created_at && (
+                      <div>Added to catalog: {new Date(book.created_at).toLocaleDateString()}</div>
+                    )}
+                    {book.updated_at && (
+                      <div>Last updated: {new Date(book.updated_at).toLocaleDateString()}</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Additional sections could go here */}
+        {/* Additional sections */}
         <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Reviews & Ratings</h2>
-          <p className="text-gray-600">
-            Reviews section coming soon...
-          </p>
+          <div className="text-center py-8 text-gray-500">
+            <div className="text-4xl mb-2">⭐</div>
+            <p className="mb-4">
+              {ratingsCount > 0 
+                ? `This book has ${ratingsCount} review${ratingsCount !== 1 ? 's' : ''} with an average rating of ${rating.toFixed(1)}/10`
+                : 'No reviews yet. Be the first to review this book!'
+              }
+            </p>
+            <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
+              Write a Review
+            </button>
+          </div>
+        </div>
+
+        {/* Related books section placeholder */}
+        <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">Similar Books</h2>
+          <div className="text-center py-8 text-gray-500">
+            <div className="text-4xl mb-2">🔍</div>
+            <p>Similar book recommendations coming soon...</p>
+          </div>
         </div>
 
       </div>
