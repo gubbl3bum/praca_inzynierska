@@ -8,7 +8,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from django.db import transaction, models
-from django.db.models import Q, Count, Avg  # DODANO Q, Count, Avg
+from django.db.models import Q, Count, Avg
 from django.utils import timezone
 from datetime import timedelta
 
@@ -35,18 +35,51 @@ class BookSimilarityService:
             'author': 0.2,        # Autor
             'description': 0.1    # Opis (mniej ważny bo może być bardzo różny)
         }
+        
+        # NLTK - inicjalizuj raz przy tworzeniu serwisu
+        self._nltk_initialized = False
+        self._stop_words = None
+        
+        # POPRAWKA: Wywołaj inicjalizację NLTK od razu
+        self._ensure_nltk_data()
     
-    def ensure_nltk_data(self):
-        """Upewnij się że NLTK data jest pobrana"""
+    def _ensure_nltk_data(self):
+        """Upewnij się że NLTK data jest pobrana - TYLKO RAZ"""
+        if self._nltk_initialized:
+            return
+            
         try:
+            # Test czy data już jest
             nltk.data.find('tokenizers/punkt')
             nltk.data.find('corpora/stopwords')
             nltk.data.find('corpora/wordnet')
+            print("✅ NLTK data already available")
         except LookupError:
-            print("📥 Downloading NLTK data...")
+            print("📥 Downloading NLTK data (one-time setup)...")
             nltk.download('punkt', quiet=True)
-            nltk.download('stopwords', quiet=True)
+            nltk.download('stopwords', quiet=True) 
             nltk.download('wordnet', quiet=True)
+            nltk.download('omw-1.4', quiet=True)
+            print("✅ NLTK data downloaded successfully")
+        
+        # Cache stop words
+        from nltk.corpus import stopwords
+        self._stop_words = set(stopwords.words('english'))
+        
+        # Dodaj custom stopwords dla książek
+        custom_stopwords = {
+            'book', 'novel', 'story', 'author', 'writer', 'tale', 'narrative',
+            'chapter', 'page', 'read', 'reading', 'written', 'write', 'tells',
+            'follows', 'chronicles', 'explores', 'examines', 'describes'
+        }
+        self._stop_words.update(custom_stopwords)
+        
+        self._nltk_initialized = True
+    
+    def ensure_nltk_data(self):
+        """Backward compatibility - deprecated"""
+        if not self._nltk_initialized:
+            self._ensure_nltk_data()
     
     def extract_features_from_book(self, book):
         """
@@ -74,16 +107,18 @@ class BookSimilarityService:
         
         # Słowa z opisu
         if book.description:
-            self.ensure_nltk_data()
-            from nltk.corpus import stopwords
+            # NLTK już zainicjalizowane, używaj cache
             from nltk.tokenize import word_tokenize
             
-            stop_words = set(stopwords.words('english'))
+            # Zabezpieczenie - upewnij się że stop_words są zainicjalizowane
+            if self._stop_words is None:
+                self._ensure_nltk_data()
+            
             words = word_tokenize(book.description.lower())
-            # Filtruj słowa: tylko alfanumeryczne, długie, nie stop words
+            # Filtruj słowa używając cached stop_words
             filtered_words = [
                 word for word in words 
-                if word.isalpha() and len(word) > 2 and word not in stop_words
+                if word.isalpha() and len(word) > 2 and word not in self._stop_words
             ]
             features['description_words'] = filtered_words[:50]  # Max 50 słów
         
@@ -373,13 +408,25 @@ class BookSimilarityService:
         
         return dynamic_similarities[:limit]
 
+# Singleton instance - utwórz raz i używaj wszędzie
+_service_instance = None
+
+def get_similarity_service():
+    """Pobierz singleton instance serwisu"""
+    global _service_instance
+    if _service_instance is None:
+        print("🚀 Initializing BookSimilarityService singleton...")
+        _service_instance = BookSimilarityService()
+        print("✅ BookSimilarityService ready!")
+    return _service_instance
+
 # Funkcje pomocnicze do uruchamiania
 
 def calculate_similarities_for_single_book(book_id):
     """Wylicz podobieństwa dla pojedynczej książki"""
     try:
         book = Book.objects.get(id=book_id)
-        service = BookSimilarityService()
+        service = get_similarity_service()  # Użyj singleton
         return service.calculate_similarities_for_book(book)
     except Book.DoesNotExist:
         print(f"❌ Book with ID {book_id} not found")
@@ -387,14 +434,14 @@ def calculate_similarities_for_single_book(book_id):
 
 def calculate_all_book_similarities():
     """Wylicz podobieństwa dla wszystkich książek"""
-    service = BookSimilarityService()
+    service = get_similarity_service()  # Użyj singleton
     return service.calculate_all_similarities()
 
 def get_book_recommendations(book_id, limit=10):
     """Pobierz rekomendacje dla książki"""
     try:
         book = Book.objects.get(id=book_id)
-        service = BookSimilarityService()
+        service = get_similarity_service()  # Użyj singleton
         return service.get_similar_books(book, limit=limit)
     except Book.DoesNotExist:
         print(f"❌ Book with ID {book_id} not found")
