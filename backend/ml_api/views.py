@@ -267,7 +267,7 @@ def similarity_stats(request):
 def recalculate_similarities(request, book_id=None):
     """Force recalculation of similarities"""
     try:
-        service = BookSimilarityService()
+        service = get_similarity_service()  # Użyj singleton
         
         if book_id:
             # Recalculate for specific book
