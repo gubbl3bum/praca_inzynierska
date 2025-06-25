@@ -360,7 +360,7 @@ const BookDetails = () => {
 
         {/* Similar Books section */}
         <div className="mt-8">
-          <SimilarBooks bookId={book.id} limit={8} />
+          <SimilarBooks bookId={book.id}/>
         </div>
 
         {/* Reviews section remains the same */}
