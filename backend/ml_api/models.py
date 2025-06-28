@@ -1,5 +1,7 @@
 from django.db import models
 from decimal import Decimal
+from django.core.validators import MinValueValidator, MaxValueValidator
+import json
 
 class Author(models.Model):
     first_name = models.CharField(max_length=200, blank=True)
@@ -159,3 +161,106 @@ class BookReview(models.Model):
     
     def __str__(self):
         return f"{self.user.username} - {self.book.title} ({self.rating}/10)"
+    
+class BookSimilarity(models.Model):
+    """
+    Prekalkulowane podobieństwa między książkami
+    """
+    book1 = models.ForeignKey(
+        'Book', 
+        on_delete=models.CASCADE, 
+        related_name='similarities_as_book1'
+    )
+    book2 = models.ForeignKey(
+        'Book', 
+        on_delete=models.CASCADE, 
+        related_name='similarities_as_book2'
+    )
+    
+    # Podobieństwo kosinusowe (0.0 - 1.0)
+    cosine_similarity = models.FloatField(
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)]
+    )
+    
+    # Szczegółowe podobieństwa dla różnych aspektów
+    category_similarity = models.FloatField(default=0.0)
+    keyword_similarity = models.FloatField(default=0.0)
+    author_similarity = models.FloatField(default=0.0)
+    description_similarity = models.FloatField(default=0.0)
+    
+    # Metadane obliczenia
+    calculated_at = models.DateTimeField(auto_now=True)
+    version = models.IntegerField(default=1)  # Wersja algorytmu
+    
+    class Meta:
+        db_table = 'book_similarities'
+        unique_together = ['book1', 'book2']
+        indexes = [
+            models.Index(fields=['book1', 'cosine_similarity']),
+            models.Index(fields=['book2', 'cosine_similarity']),
+            models.Index(fields=['cosine_similarity']),
+        ]
+    
+    def __str__(self):
+        return f"{self.book1.title} ↔ {self.book2.title}: {self.cosine_similarity:.3f}"
+    
+    @classmethod
+    def get_similar_books(cls, book, limit=10, min_similarity=0.1):
+        """
+        Znajdź podobne książki dla danej książki
+        """
+        # Zapytanie uwzględniające obie strony relacji
+        similar = cls.objects.filter(
+            models.Q(book1=book) | models.Q(book2=book),
+            cosine_similarity__gte=min_similarity
+        ).select_related('book1', 'book2').order_by('-cosine_similarity')[:limit]
+        
+        # Zwróć książki z ich podobieństwami
+        results = []
+        for sim in similar:
+            other_book = sim.book2 if sim.book1 == book else sim.book1
+            results.append({
+                'book': other_book,
+                'similarity': sim.cosine_similarity,
+                'details': {
+                    'category': sim.category_similarity,
+                    'keyword': sim.keyword_similarity,
+                    'author': sim.author_similarity,
+                    'description': sim.description_similarity
+                }
+            })
+        
+        return results
+
+class BookVector(models.Model):
+    """
+    Wektor cech książki dla szybkich obliczeń podobieństwa
+    """
+    book = models.OneToOneField(
+        'Book', 
+        on_delete=models.CASCADE, 
+        related_name='vector'
+    )
+    
+    # Wektory jako JSON
+    category_vector = models.JSONField(default=dict)  # {category_id: weight}
+    keyword_vector = models.JSONField(default=dict)   # {keyword: tfidf_score}
+    author_vector = models.JSONField(default=dict)    # {author_id: weight}
+    description_vector = models.JSONField(default=dict)  # {word: tfidf_score}
+    
+    # Kombinowany wektor (znormalizowany)
+    combined_vector = models.JSONField(default=dict)
+    
+    # Metadane
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    version = models.IntegerField(default=1)
+    
+    class Meta:
+        db_table = 'book_vectors'
+        indexes = [
+            models.Index(fields=['updated_at']),
+        ]
+    
+    def __str__(self):
+        return f"Vector for {self.book.title}"

@@ -33,7 +33,7 @@ const apiCall = async (endpoint, options = {}) => {
 
 // Books API functions
 export const booksAPI = {
-  // Get featured books for home page - DOSTOSOWANE DO BACKEND
+  // Get featured books for home page
   getFeatured: async () => {
     const response = await apiCall('/books/featured/');
     // Backend zwraca obiekt z top_rated, recent, popular
@@ -44,28 +44,58 @@ export const booksAPI = {
     };
   },
   
-  // Get all books with pagination and filters - DOSTOSOWANE
+  // Get all books with pagination and filters
   getBooks: (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     const endpoint = queryString ? `/books/?${queryString}` : '/books/';
     return apiCall(endpoint);
   },
   
-  // Get top rated books with pagination - DOSTOSOWANE
+  // Get top rated books with pagination
   getTopRated: (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     const endpoint = queryString ? `/books/top-rated/?${queryString}` : '/books/top-rated/';
     return apiCall(endpoint);
   },
   
-  // Get single book details - DOSTOSOWANE
+  // Get single book details
   getBook: (id) => apiCall(`/books/${id}/`),
   
-  // Search books - FALLBACK do głównego endpointu books
+  // Search books
   searchBooks: (query, params = {}) => {
     const allParams = { search: query, ...params };
     const queryString = new URLSearchParams(allParams).toString();
     return apiCall(`/books/?${queryString}`);
+  },
+  
+  // NEW SIMILARITY METHODS
+  getSimilarBooks: (bookId, params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const endpoint = queryString 
+      ? `/books/${bookId}/recommendations/?${queryString}` 
+      : `/books/${bookId}/recommendations/`;
+    console.log(`🔍 Calling similar books API: ${endpoint}`);
+    return apiCall(endpoint);
+  },
+  
+  // Alias for similar books
+  getRecommendations: (bookId, params = {}) => {
+    return booksAPI.getSimilarBooks(bookId, params);
+  },
+  
+  // Get similarity statistics
+  getSimilarityStats: () => apiCall('/similarities/stats/'),
+  
+  // Force recalculation of similarities
+  recalculateSimilarities: (bookId = null, options = {}) => {
+    const endpoint = bookId 
+      ? `/similarities/recalculate/${bookId}/`
+      : '/similarities/recalculate/';
+    
+    return apiCall(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(options)
+    });
   },
   
   // Legacy compatibility functions
@@ -110,7 +140,7 @@ export const mlAPI = {
   getStatus: () => statusAPI.getStatus()
 };
 
-// Pagination utilities - POPRAWIONE
+// Pagination utilities
 export const paginationUtils = {
   // Create pagination info from API response
   createPaginationInfo: (apiResponse) => {
@@ -140,7 +170,7 @@ export const paginationUtils = {
   }
 };
 
-// Open Library utilities (zachowane)
+// Open Library utilities
 export const openLibraryUtils = {
   // Generate cover URLs for different sizes
   getCoverUrls: (isbn) => {
@@ -199,7 +229,7 @@ export const openLibraryUtils = {
   }
 };
 
-// Error handling helper - POPRAWIONE
+// Error handling helper
 export const handleApiError = (error, fallbackMessage = 'Something went wrong') => {
   console.error('API Error:', error);
   
@@ -256,7 +286,11 @@ export const dataUtils = {
       isbn: book.isbn,
       publisher: book.publisher,
       created_at: book.created_at,
-      updated_at: book.updated_at
+      updated_at: book.updated_at,
+      
+      // Similarity specific fields
+      similarity_score: book.similarity_score,
+      similarity_details: book.similarity_details
     };
   },
   
@@ -278,6 +312,13 @@ export const dataUtils = {
       return {
         ...response,
         books: response.books.map(dataUtils.normalizeBook)
+      };
+    }
+    
+    if (response.recommendations) {
+      return {
+        ...response,
+        recommendations: response.recommendations.map(dataUtils.normalizeBook)
       };
     }
     

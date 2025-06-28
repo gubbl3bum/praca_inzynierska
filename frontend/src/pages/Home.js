@@ -185,7 +185,7 @@ const Home = () => {
           </div>
         )}
 
-        {/* Admin controls for development */}
+        {/* Admin controls for development
         {process.env.NODE_ENV === 'development' && (
           <div className="mb-8">
             <button
@@ -195,7 +195,7 @@ const Home = () => {
               Refresh Book Covers from Open Library
             </button>
           </div>
-        )}
+        )} */}
       </div>
 
       {/* Books Sections */}
