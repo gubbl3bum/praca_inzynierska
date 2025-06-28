@@ -326,12 +326,90 @@ export const dataUtils = {
   }
 };
 
+// Auth API functions 
+export const authAPI = {
+  // Registration
+  register: async (userData) => {
+    return apiCall('/auth/register/', {
+      method: 'POST',
+      body: JSON.stringify(userData)
+    });
+  },
+  
+  // Log in
+  login: async (email, password) => {
+    return apiCall('/auth/login/', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+  },
+  
+  // Log out
+  logout: async (accessToken) => {
+    return apiCall('/auth/logout/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  // Check authorization status
+  checkStatus: async (accessToken) => {
+    return apiCall('/auth/status/', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  // Refresh token
+  refreshToken: async (refreshToken) => {
+    return apiCall('/token/refresh/', {
+      method: 'POST',
+      body: JSON.stringify({ refresh: refreshToken })
+    });
+  },
+  
+  // GEt user profile
+  getProfile: async (accessToken) => {
+    return apiCall('/auth/profile/', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  // Update profile
+  updateProfile: async (profileData, accessToken) => {
+    return apiCall('/auth/profile/', {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(profileData)
+    });
+  },
+  
+  // Change password
+  changePassword: async (passwordData, accessToken) => {
+    return apiCall('/auth/change-password/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(passwordData)
+    });
+  }
+};
+
 // Export default API object
 const api = {
   books: booksAPI,
   categories: categoriesAPI,
   status: statusAPI,
   ml: mlAPI,
+  auth: authAPI,
   openLibrary: openLibraryUtils,
   pagination: paginationUtils,
   data: dataUtils,
