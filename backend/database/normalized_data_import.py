@@ -530,7 +530,7 @@ def import_books_csv(csv_file_path):
         return False
 
 def generate_users_with_preferences(num_users=100):
-    """Generate users with preferences"""
+    """Generuj użytkowników z preferencjami"""
     
     print(f"\n👥 GENERATING {num_users} USERS WITH PREFERENCES")
     print("=" * 60)
@@ -554,7 +554,7 @@ def generate_users_with_preferences(num_users=100):
             'errors': []
         }
         
-        print("🔄 Creating users...")
+        print("🔄 Creating users with new authentication model...")
         
         with transaction.atomic():
             for i in range(num_users):
@@ -563,11 +563,10 @@ def generate_users_with_preferences(num_users=100):
                         print(f"👤 Created {i + 1}/{num_users} users...")
                     
                     # Generate user data
-                    username = fake.user_name()
-                    email = fake.email()
-                    password_hash = fake.password()
                     first_name = fake.first_name()
                     last_name = fake.last_name()
+                    username = fake.user_name()
+                    email = fake.email()
                     
                     # Ensure unique username and email
                     username_counter = 1
@@ -583,14 +582,18 @@ def generate_users_with_preferences(num_users=100):
                         email = f"{name_part}{email_counter}@{domain_part}"
                         email_counter += 1
                     
-                    # Create user
-                    user = User.objects.create(
+                    # Generate a secure password
+                    password = fake.password(length=12, special_chars=True, digits=True, upper_case=True, lower_case=True)
+                    
+                    # Create user using the new User manager
+                    user = User.objects.create_user(
                         username=username,
                         email=email,
-                        password_hash=password_hash,
+                        password=password,  
                         first_name=first_name,
                         last_name=last_name
                     )
+                    
                     stats['users_created'] += 1
                     
                     # Generate preferences
@@ -607,6 +610,7 @@ def generate_users_with_preferences(num_users=100):
                 except Exception as e:
                     error_msg = f"Error creating user {i + 1}: {str(e)}"
                     stats['errors'].append(error_msg)
+                    print(f"    ❌ {error_msg}")
                     continue
         
         print("\n" + "=" * 60)
@@ -615,6 +619,13 @@ def generate_users_with_preferences(num_users=100):
         print(f"⚙️  Preferences created: {stats['preferences_created']}")
         print(f"❌ Errors: {len(stats['errors'])}")
         
+        if stats['errors']:
+            print("\n🔍 Error details:")
+            for error in stats['errors'][:5]:  # Show first 5 errors
+                print(f"   - {error}")
+            if len(stats['errors']) > 5:
+                print(f"   ... and {len(stats['errors']) - 5} more errors")
+        
         return True
         
     except ImportError:
@@ -622,8 +633,10 @@ def generate_users_with_preferences(num_users=100):
         return True
     except Exception as e:
         print(f"💥 Critical error during user generation: {e}")
+        import traceback
+        traceback.print_exc()
         return False
-
+    
 def generate_sample_reviews(num_reviews=200):
     """Generate sample reviews"""
     
@@ -638,8 +651,12 @@ def generate_sample_reviews(num_reviews=200):
         users = list(User.objects.all())
         books = list(Book.objects.all())
         
-        if not users or not books:
-            print("⚠️  No users or books found. Run import and user generation first.")
+        if not users:
+            print("⚠️  No users found. Run user generation first.")
+            return False
+            
+        if not books:
+            print("⚠️  No books found. Run book import first.")
             return False
         
         stats = {
@@ -657,7 +674,12 @@ def generate_sample_reviews(num_reviews=200):
             "Disappointing compared to expectations.",
             "Masterpiece! One of the best I've read.",
             "Thought-provoking and insightful.",
-            "Good book for fans of this genre."
+            "Good book for fans of this genre.",
+            "Amazing plot twists throughout!",
+            "The characters felt very real.",
+            "Perfect for a weekend read.",
+            "Educational and entertaining.",
+            "A bit predictable but enjoyable."
         ]
         
         print("🔄 Creating reviews...")
@@ -705,6 +727,11 @@ def generate_sample_reviews(num_reviews=200):
         print(f"⭐ Reviews created: {stats['reviews_created']}")
         print(f"❌ Errors: {len(stats['errors'])}")
         
+        if stats['errors']:
+            print("\n🔍 Error details:")
+            for error in stats['errors'][:3]:  # Show first 3 errors
+                print(f"   - {error}")
+        
         return True
         
     except ImportError:
@@ -712,6 +739,40 @@ def generate_sample_reviews(num_reviews=200):
         return True
     except Exception as e:
         print(f"💥 Critical error during review generation: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    
+def create_admin_user():
+    """Utwórz użytkownika administracyjnego"""
+    
+    print("\n👑 CREATING ADMIN USER")
+    print("=" * 40)
+    
+    try:
+        # Check if the admin already exists
+        if User.objects.filter(username='admin').exists():
+            print("✅ Admin user already exists")
+            return True
+        
+        # Create superuser
+        admin_user = User.objects.create_superuser(
+            username='admin',
+            email='admin@wolfread.com',
+            password='admin123',  # TODO: change in production
+            first_name='Admin',
+            last_name='User'
+        )
+        
+        print(f"✅ Admin user created: {admin_user.username}")
+        print(f"📧 Email: {admin_user.email}")
+        print("🔑 Password: admin123")
+        print("⚠️  CHANGE PASSWORD IN PRODUCTION!")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error creating admin user: {e}")
         return False
 
 def analyze_import_results():
@@ -792,34 +853,68 @@ def analyze_import_results():
         return False
 
 def main():
-    """Main import function"""
+    """Main import function with updated user authentication"""
     
     print("🚀 STARTING NORMALIZED DATA IMPORT")
     if TEST_BOOK_LIMIT:
-        print(f"🚨 TESTOWY TRYB: ograniczenie do {TEST_BOOK_LIMIT} książek")
+        print(f"🚨 TEST MODE: limited to {TEST_BOOK_LIMIT} books")
     print("=" * 70)
     
     # Check if data already exists
     try:
         existing_books = Book.objects.count()
+        existing_users = User.objects.count()
+        
+        print(f"📊 Current database status:")
+        print(f"   📚 Books: {existing_books}")
+        print(f"   👥 Users: {existing_users}")
+        
         if existing_books > 0:
             print(f"📚 Database already contains {existing_books} books")
-            print("✅ Skipping import - data already exists")
+            
+            # Check if we need to generate users
+            if existing_users == 0:
+                print("👥 No users found, generating users and reviews...")
+                try:
+                    # Create admin user
+                    create_admin_user()
+                    # Generate regular users
+                    generate_users_with_preferences()
+                    # Generate reviews
+                    generate_sample_reviews()
+                    # Show final analysis
+                    analyze_import_results()
+                except Exception as e:
+                    print(f"⚠️  User/review generation error: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print(f"👥 Database already contains {existing_users} users")
+                print("✅ All data exists - showing current statistics")
+                analyze_import_results()
+            
             return True
+            
     except Exception as e:
         print(f"⚠️  Error checking existing data: {e}")
+        print("🔄 Continuing with full import...")
     
     # 1. Wait for database
     if not wait_for_database():
+        print("❌ Database not available - exiting")
         sys.exit(1)
     
     # 2. Run migrations
+    print("\n" + "🔸" * 35)
+    print("STAGE 1: DATABASE MIGRATIONS")
+    print("🔸" * 35)
+    
     if not run_migrations():
-        print("⚠️  Continuing despite migration errors...")
+        print("⚠️  Migration errors detected, but continuing...")
     
     # 3. Import books
     print("\n" + "🔸" * 35)
-    print("STAGE 1: BOOK IMPORT")
+    print("STAGE 2: BOOK IMPORT")
     print("🔸" * 35)
     
     # Search for CSV files in various locations
@@ -876,9 +971,20 @@ def main():
         
         return False
     
-    # 4. Generate users with preferences
+    # 4. Create admin user
     print("\n" + "🔸" * 35)
-    print("STAGE 2: USER GENERATION")
+    print("STAGE 3: ADMIN USER CREATION")
+    print("🔸" * 35)
+    
+    try:
+        if not create_admin_user():
+            print("⚠️  Admin user creation failed, but continuing...")
+    except Exception as e:
+        print(f"⚠️  Admin user creation error: {e}")
+    
+    # 5. Generate users with preferences
+    print("\n" + "🔸" * 35)
+    print("STAGE 4: USER GENERATION")
     print("🔸" * 35)
     
     try:
@@ -886,10 +992,12 @@ def main():
             print("⚠️  User generation failed, but continuing...")
     except Exception as e:
         print(f"⚠️  User generation error: {e}")
+        import traceback
+        traceback.print_exc()
     
-    # 5. Generate sample reviews
+    # 6. Generate sample reviews
     print("\n" + "🔸" * 35)
-    print("STAGE 3: REVIEW GENERATION")
+    print("STAGE 5: REVIEW GENERATION")
     print("🔸" * 35)
     
     try:
@@ -897,33 +1005,303 @@ def main():
             print("⚠️  Review generation failed, but continuing...")
     except Exception as e:
         print(f"⚠️  Review generation error: {e}")
+        import traceback
+        traceback.print_exc()
     
-    # 6. Analyze results
+    # 7. Analyze results
     print("\n" + "🔸" * 35)
-    print("STAGE 4: RESULTS ANALYSIS")
+    print("STAGE 6: RESULTS ANALYSIS")
     print("🔸" * 35)
     
     try:
         analyze_import_results()
     except Exception as e:
         print(f"⚠️  Analysis error: {e}")
+        import traceback
+        traceback.print_exc()
     
-    print("\n🎉 NORMALIZED IMPORT COMPLETED SUCCESSFULLY!")
-    print("✅ Database ready with normalized schema")
+    # Final summary
+    print("\n" + "=" * 70)
+    print("🎉 NORMALIZED IMPORT COMPLETED SUCCESSFULLY!")
+    print("✅ Database ready with normalized schema and authentication")
     
     if TEST_BOOK_LIMIT:
-        print(f"\n🚨 UWAGA: Tryb testowy - zaimportowano tylko {TEST_BOOK_LIMIT} książek")
-        print("🔧 Aby zaimportować wszystkie książki:")
-        print("   1. Zmień TEST_BOOK_LIMIT = None w pliku")
-        print("   2. Uruchom ponownie import")
+        print(f"\n🚨 WARNING: Test mode - imported only {TEST_BOOK_LIMIT} books")
+        print("🔧 To import all books:")
+        print("   1. Change TEST_BOOK_LIMIT = None in the file")
+        print("   2. Run import again")
     
-    print("\n🌐 System gotowy!")
+    print("\n🌐 System ready!")
     print("🔗 Django Admin: http://localhost:8000/admin/")
+    print("🔑 Admin Login: admin / admin123")
     print("🔗 API Status: http://localhost:8000/api/status/")
     print("🔗 Featured Books: http://localhost:8000/api/books/featured/")
+    print("🔗 Book Catalog: http://localhost:3000/catalog")
+    print("\n⚠️  REMEMBER: Change admin password in production!")
     
     return True
 
+def create_admin_user():
+    """Create administrative user"""
+    
+    print("\n👑 CREATING ADMIN USER")
+    print("=" * 40)
+    
+    try:
+        # Check if admin already exists
+        if User.objects.filter(username='admin').exists():
+            print("✅ Admin user already exists")
+            admin_user = User.objects.get(username='admin')
+            print(f"📧 Email: {admin_user.email}")
+            return True
+        
+        # Create superuser
+        admin_user = User.objects.create_superuser(
+            username='admin',
+            email='admin@wolfread.com',
+            password='admin123',  # CHANGE IN PRODUCTION!
+            first_name='Admin',
+            last_name='User'
+        )
+        
+        print(f"✅ Admin user created: {admin_user.username}")
+        print(f"📧 Email: {admin_user.email}")
+        print("🔑 Password: admin123")
+        print("⚠️  CHANGE PASSWORD IN PRODUCTION!")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error creating admin user: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def generate_users_with_preferences(num_users=100):
+    """Generate users with preferences - UPDATED for new User model"""
+    
+    print(f"\n👥 GENERATING {num_users} USERS WITH PREFERENCES")
+    print("=" * 60)
+    
+    try:
+        from faker import Faker
+        import random
+        fake = Faker()
+        
+        # Get available categories and authors
+        categories = list(Category.objects.all())
+        authors = list(Author.objects.all())
+        
+        if not categories or not authors:
+            print("⚠️  No categories or authors found. Import books first.")
+            return False
+        
+        stats = {
+            'users_created': 0,
+            'preferences_created': 0,
+            'errors': []
+        }
+        
+        print("🔄 Creating users with new authentication model...")
+        
+        with transaction.atomic():
+            for i in range(num_users):
+                try:
+                    if (i + 1) % 25 == 0:
+                        print(f"👤 Created {i + 1}/{num_users} users...")
+                    
+                    # Generate user data
+                    first_name = fake.first_name()
+                    last_name = fake.last_name()
+                    username = fake.user_name()
+                    email = fake.email()
+                    
+                    # Ensure unique username and email
+                    username_counter = 1
+                    original_username = username
+                    while User.objects.filter(username=username).exists():
+                        username = f"{original_username}{username_counter}"
+                        username_counter += 1
+                    
+                    email_counter = 1
+                    original_email = email
+                    while User.objects.filter(email=email).exists():
+                        name_part, domain_part = original_email.split('@')
+                        email = f"{name_part}{email_counter}@{domain_part}"
+                        email_counter += 1
+                    
+                    # Generate a secure password
+                    password = fake.password(length=12, special_chars=True, digits=True, upper_case=True, lower_case=True)
+                    
+                    # Create user using the new User manager
+                    user = User.objects.create_user(
+                        username=username,
+                        email=email,
+                        password=password,  # This will be properly hashed
+                        first_name=first_name,
+                        last_name=last_name
+                    )
+                    
+                    stats['users_created'] += 1
+                    
+                    # Generate preferences
+                    preferred_categories = random.sample(categories, k=random.randint(1, min(5, len(categories))))
+                    preferred_authors = random.sample(authors, k=random.randint(1, min(3, len(authors))))
+                    
+                    UserPreferences.objects.create(
+                        user=user,
+                        preferred_categories=[cat.id for cat in preferred_categories],
+                        preferred_authors=[auth.id for auth in preferred_authors]
+                    )
+                    stats['preferences_created'] += 1
+                    
+                except Exception as e:
+                    error_msg = f"Error creating user {i + 1}: {str(e)}"
+                    stats['errors'].append(error_msg)
+                    if len(stats['errors']) <= 5:  # Show only first 5 errors
+                        print(f"    ❌ {error_msg}")
+                    continue
+        
+        print("\n" + "=" * 60)
+        print("👥 USER GENERATION SUMMARY:")
+        print(f"👤 Users created: {stats['users_created']}")
+        print(f"⚙️  Preferences created: {stats['preferences_created']}")
+        print(f"❌ Errors: {len(stats['errors'])}")
+        
+        if stats['errors'] and len(stats['errors']) > 5:
+            print(f"   (showing first 5 of {len(stats['errors'])} total errors)")
+        
+        return True
+        
+    except ImportError:
+        print("⚠️  Faker library not available. Skipping user generation.")
+        return True
+    except Exception as e:
+        print(f"💥 Critical error during user generation: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def generate_sample_reviews(num_reviews=200):
+    """Generate sample reviews - UPDATED"""
+    
+    print(f"\n⭐ GENERATING {num_reviews} SAMPLE REVIEWS")
+    print("=" * 60)
+    
+    try:
+        import random
+        from faker import Faker
+        fake = Faker()
+        
+        users = list(User.objects.all())
+        books = list(Book.objects.all())
+        
+        if not users:
+            print("⚠️  No users found. Run user generation first.")
+            return False
+            
+        if not books:
+            print("⚠️  No books found. Run book import first.")
+            return False
+        
+        stats = {
+            'reviews_created': 0,
+            'errors': []
+        }
+        
+        review_templates = [
+            "Excellent book! Highly recommend.",
+            "Great read, couldn't put it down.",
+            "Interesting story with good character development.",
+            "Well written and engaging.",
+            "Not my favorite, but decent overall.",
+            "Could be better, some parts were slow.",
+            "Disappointing compared to expectations.",
+            "Masterpiece! One of the best I've read.",
+            "Thought-provoking and insightful.",
+            "Good book for fans of this genre.",
+            "Amazing plot twists throughout!",
+            "The characters felt very real.",
+            "Perfect for a weekend read.",
+            "Educational and entertaining.",
+            "A bit predictable but enjoyable.",
+            "Captivating from start to finish.",
+            "Would definitely read again.",
+            "Not what I expected, but pleasantly surprised.",
+            "Heavy themes but beautifully written.",
+            "Fast-paced and action-packed."
+        ]
+        
+        print("🔄 Creating reviews...")
+        
+        with transaction.atomic():
+            created_reviews = 0
+            attempts = 0
+            max_attempts = num_reviews * 3  # Allow some duplicates
+            
+            while created_reviews < num_reviews and attempts < max_attempts:
+                try:
+                    attempts += 1
+                    
+                    user = random.choice(users)
+                    book = random.choice(books)
+                    
+                    # Check if review already exists
+                    if BookReview.objects.filter(user=user, book=book).exists():
+                        continue
+                    
+                    # Generate rating (biased towards higher ratings)
+                    rating = random.choices(
+                        range(1, 11),
+                        weights=[1, 2, 3, 5, 8, 12, 15, 18, 20, 16],  # Biased towards 7-9
+                        k=1
+                    )[0]
+                    
+                    # Generate review text
+                    review_text = random.choice(review_templates)
+                    if random.random() < 0.3:  # 30% chance of longer review
+                        review_text += f" {fake.sentence()}"
+                    
+                    BookReview.objects.create(
+                        user=user,
+                        book=book,
+                        rating=rating,
+                        review_text=review_text
+                    )
+                    created_reviews += 1
+                    stats['reviews_created'] += 1
+                    
+                    if created_reviews % 50 == 0:
+                        print(f"⭐ Created {created_reviews}/{num_reviews} reviews...")
+                    
+                except Exception as e:
+                    error_msg = f"Error creating review: {str(e)}"
+                    stats['errors'].append(error_msg)
+                    if len(stats['errors']) <= 3:  # Show only first 3 errors
+                        print(f"    ❌ {error_msg}")
+                    continue
+        
+        print("\n" + "=" * 60)
+        print("⭐ REVIEW GENERATION SUMMARY:")
+        print(f"⭐ Reviews created: {stats['reviews_created']}")
+        print(f"🔄 Attempts made: {attempts}")
+        print(f"❌ Errors: {len(stats['errors'])}")
+        
+        if stats['reviews_created'] < num_reviews:
+            print(f"⚠️  Only created {stats['reviews_created']} of {num_reviews} requested reviews")
+            print("   (probably due to user-book combination duplicates)")
+        
+        return True
+        
+    except ImportError:
+        print("⚠️  Faker library not available. Skipping review generation.")
+        return True
+    except Exception as e:
+        print(f"💥 Critical error during review generation: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    
 if __name__ == "__main__":
     try:
         success = main()
