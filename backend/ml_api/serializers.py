@@ -1,20 +1,24 @@
 from rest_framework import serializers
+from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
 from .models import (
-    Book, Author, Publisher, Category, BookReview, 
-    UserBookList, UserBookListItem, User, UserPreferences,
-    PredictionRequest, PredictionResult
+    Book, Author, Publisher, Category, BookAuthor, BookCategory,
+    User, UserPreferences, BookReview, RefreshToken
 )
 
 class AuthorSerializer(serializers.ModelSerializer):
-    book_count = serializers.ReadOnlyField()
+    book_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Author
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 
-            'book_count', 'created_at', 'updated_at'
+            'book_count', 'created_at'
         ]
-        read_only_fields = ['id', 'full_name', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'full_name', 'created_at']
+    
+    def get_book_count(self, obj):
+        return obj.books.count()
 
 class AuthorSimpleSerializer(serializers.ModelSerializer):
     """Simple serializer for author lists"""
@@ -23,12 +27,15 @@ class AuthorSimpleSerializer(serializers.ModelSerializer):
         fields = ['id', 'full_name', 'first_name', 'last_name']
 
 class PublisherSerializer(serializers.ModelSerializer):
-    book_count = serializers.ReadOnlyField()
+    book_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Publisher
-        fields = ['id', 'name', 'book_count', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'book_count', 'created_at']
+        read_only_fields = ['id', 'created_at']
+    
+    def get_book_count(self, obj):
+        return obj.books.count()
 
 class PublisherSimpleSerializer(serializers.ModelSerializer):
     """Simple serializer for publisher references"""
@@ -37,12 +44,15 @@ class PublisherSimpleSerializer(serializers.ModelSerializer):
         fields = ['id', 'name']
 
 class CategorySerializer(serializers.ModelSerializer):
-    book_count = serializers.ReadOnlyField()
+    book_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
         fields = ['id', 'name', 'book_count', 'created_at']
         read_only_fields = ['id', 'created_at']
+    
+    def get_book_count(self, obj):
+        return obj.books.count()
 
 class CategorySimpleSerializer(serializers.ModelSerializer):
     """Simple serializer for category lists"""
@@ -58,14 +68,7 @@ class BookSerializer(serializers.ModelSerializer):
     
     # Computed fields
     author_names = serializers.ReadOnlyField()
-    category_names = serializers.ReadOnlyField()
-    cover_image = serializers.ReadOnlyField()
-    
-    # Open Library integration
-    open_library_cover_small = serializers.ReadOnlyField()
-    open_library_cover_medium = serializers.ReadOnlyField()
-    open_library_cover_large = serializers.ReadOnlyField()
-    open_library_url = serializers.ReadOnlyField()
+    category_names = serializers.SerializerMethodField()
     
     # Legacy compatibility fields
     author = serializers.SerializerMethodField()
@@ -81,36 +84,34 @@ class BookSerializer(serializers.ModelSerializer):
             'authors', 'author', 'author_names',
             'categories', 'category_names', 
             'publisher',
-            'isbn', 'open_library_id',
-            'image_url_s', 'image_url_m', 'image_url_l',
-            'cover_image', 'best_cover_small', 'best_cover_medium', 'best_cover_large',
-            'open_library_cover_small', 'open_library_cover_medium', 'open_library_cover_large',
-            'open_library_url',
+            'isbn', 'cover_image_url',
+            'best_cover_small', 'best_cover_medium', 'best_cover_large',
             'average_rating', 'ratings_count',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
+    def get_category_names(self, obj):
+        return [cat.name for cat in obj.categories.all()]
+    
     def get_author(self, obj):
         """Legacy compatibility: return first author as string"""
-        primary_author = obj.primary_author
-        return primary_author.full_name if primary_author else None
+        authors = obj.authors.all()
+        if authors:
+            return authors[0].full_name
+        return 'Unknown Author'
     
     def get_best_cover_small(self, obj):
         """Return best available small cover"""
-        return (obj.open_library_cover_small or 
-                obj.image_url_s or None)
+        return obj.cover_image_url
     
     def get_best_cover_medium(self, obj):
         """Return best available medium cover"""
-        return (obj.open_library_cover_medium or 
-                obj.image_url_m or 
-                obj.cover_image or None)
+        return obj.cover_image_url
     
     def get_best_cover_large(self, obj):
         """Return best available large cover"""
-        return (obj.open_library_cover_large or 
-                obj.image_url_l or None)
+        return obj.cover_image_url
 
 class BookListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for book lists"""
@@ -121,31 +122,32 @@ class BookListSerializer(serializers.ModelSerializer):
     # Legacy compatibility
     author = serializers.SerializerMethodField()
     author_names = serializers.ReadOnlyField()
-    category_names = serializers.ReadOnlyField()
-    cover_image = serializers.ReadOnlyField()
+    category_names = serializers.SerializerMethodField()
     best_cover_medium = serializers.SerializerMethodField()
-    open_library_url = serializers.ReadOnlyField()
     
     class Meta:
         model = Book
         fields = [
             'id', 'title', 'authors', 'author', 'author_names',
             'categories', 'category_names', 'publisher',
-            'isbn', 'cover_image', 'best_cover_medium',
+            'isbn', 'cover_image_url', 'best_cover_medium',
             'average_rating', 'ratings_count',
-            'publish_year', 'open_library_url'
+            'publish_year'
         ]
+    
+    def get_category_names(self, obj):
+        return [cat.name for cat in obj.categories.all()]
     
     def get_author(self, obj):
         """Legacy compatibility: return first author as string"""
-        primary_author = obj.primary_author
-        return primary_author.full_name if primary_author else None
+        authors = obj.authors.all()
+        if authors:
+            return authors[0].full_name
+        return 'Unknown Author'
     
     def get_best_cover_medium(self, obj):
         """Return best available medium cover"""
-        return (obj.open_library_cover_medium or 
-                obj.image_url_m or 
-                obj.cover_image or None)
+        return obj.cover_image_url
 
 class BookCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating books"""
@@ -167,8 +169,7 @@ class BookCreateUpdateSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'keywords',
             'price', 'publish_month', 'publish_year',
             'author_ids', 'category_ids', 'publisher_id',
-            'isbn', 'open_library_id',
-            'image_url_s', 'image_url_m', 'image_url_l'
+            'isbn', 'cover_image_url'
         ]
         read_only_fields = ['id']
     
@@ -221,17 +222,119 @@ class BookCreateUpdateSerializer(serializers.ModelSerializer):
         
         return instance
 
-class UserSerializer(serializers.ModelSerializer):
-    """User serializer"""
+# =============================================================================
+# AUTH SERIALIZERS 
+# =============================================================================
+
+class UserRegistrationSerializer(serializers.ModelSerializer):
+    """Serializer for registering new users"""
+    
+    password = serializers.CharField(
+        write_only=True, 
+        min_length=8,
+        validators=[validate_password]
+    )
+    password_confirm = serializers.CharField(write_only=True)
+    
+    class Meta:
+        model = User
+        fields = [
+            'username', 'email', 'first_name', 'last_name', 
+            'password', 'password_confirm'
+        ]
+    
+    def validate(self, attrs):
+        """Validate that passwords match"""
+        if attrs['password'] != attrs['password_confirm']:
+            raise serializers.ValidationError("Passwords must match")
+        return attrs
+    
+    def validate_email(self, value):
+        """Check if email is unique"""
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists")
+        return value
+    
+    def validate_username(self, value):
+        """Check if username is unique"""
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("This username is already taken")
+        return value
+    
+    def create(self, validated_data):
+        """Create a new user"""
+        validated_data.pop('password_confirm')  # Remove password confirmation
+        password = validated_data.pop('password')
+        
+        user = User.objects.create_user(
+            password=password,
+            **validated_data
+        )
+        return user
+
+class UserLoginSerializer(serializers.Serializer):
+    """Serializer for user login"""
+    
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+    
+    def validate(self, attrs):
+        """Check login credentials"""
+        email = attrs.get('email')
+        password = attrs.get('password')
+        
+        if email and password:
+            # Check if user exists and password is correct
+            try:
+                user = User.objects.get(email=email)
+                if not user.check_password(password):
+                    raise serializers.ValidationError("Invalid login credentials")
+                if not user.is_active:
+                    raise serializers.ValidationError("Account has been deactivated")
+                attrs['user'] = user
+            except User.DoesNotExist:
+                raise serializers.ValidationError("Invalid login credentials")
+        else:
+            raise serializers.ValidationError("Email and password are required")
+        
+        return attrs
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    """Serializer for user profile"""
+    
     full_name = serializers.ReadOnlyField()
     
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
-            'full_name', 'created_at', 'last_login'
+            'full_name', 'date_joined', 'last_login'
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'username', 'date_joined', 'last_login']
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Serializer for changing password"""
+    
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(
+        write_only=True, 
+        min_length=8,
+        validators=[validate_password]
+    )
+    new_password_confirm = serializers.CharField(write_only=True)
+    
+    def validate_current_password(self, value):
+        """Check if current password is correct"""
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect")
+        return value
+    
+    def validate(self, attrs):
+        """Check if new passwords match"""
+        if attrs['new_password'] != attrs['new_password_confirm']:
+            raise serializers.ValidationError("New passwords must match")
+        return attrs
 
 class UserPreferencesSerializer(serializers.ModelSerializer):
     """User preferences serializer"""
@@ -263,7 +366,7 @@ class UserPreferencesSerializer(serializers.ModelSerializer):
 
 class BookReviewSerializer(serializers.ModelSerializer):
     """Book review serializer"""
-    user = UserSerializer(read_only=True)
+    user = UserProfileSerializer(read_only=True)
     book = BookListSerializer(read_only=True)
     user_id = serializers.IntegerField(write_only=True)
     book_id = serializers.IntegerField(write_only=True)
@@ -292,47 +395,10 @@ class BookReviewSimpleSerializer(serializers.ModelSerializer):
             'id', 'user_name', 'rating', 'review_text', 'created_at'
         ]
 
-class UserBookListSerializer(serializers.ModelSerializer):
-    """User book list serializer"""
-    user = UserSerializer(read_only=True)
-    book_count = serializers.ReadOnlyField()
-    books = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = UserBookList
-        fields = [
-            'id', 'user', 'name', 'description', 'is_favorites',
-            'book_count', 'books', 'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
-    
-    def get_books(self, obj):
-        """Get books in this list"""
-        book_items = obj.items.select_related('book').all()[:10]  # Limit to 10 for performance
-        books = [item.book for item in book_items]
-        return BookListSerializer(books, many=True).data
+# =============================================================================
+# STATISTICS SERIALIZERS
+# =============================================================================
 
-class UserBookListSimpleSerializer(serializers.ModelSerializer):
-    """Simple list serializer without books"""
-    book_count = serializers.ReadOnlyField()
-    
-    class Meta:
-        model = UserBookList
-        fields = [
-            'id', 'name', 'description', 'is_favorites',
-            'book_count', 'created_at', 'updated_at'
-        ]
-
-class UserBookListItemSerializer(serializers.ModelSerializer):
-    """Book list item serializer"""
-    book = BookListSerializer(read_only=True)
-    list_name = serializers.CharField(source='list.name', read_only=True)
-    
-    class Meta:
-        model = UserBookListItem
-        fields = ['id', 'book', 'list_name', 'added_at']
-
-# Statistics serializers
 class BookStatisticsSerializer(serializers.Serializer):
     """Book statistics serializer"""
     total_books = serializers.IntegerField()
@@ -356,7 +422,6 @@ class UserStatisticsSerializer(serializers.Serializer):
     """User statistics serializer"""
     total_users = serializers.IntegerField()
     total_reviews = serializers.IntegerField()
-    total_lists = serializers.IntegerField()
     average_rating = serializers.DecimalField(max_digits=3, decimal_places=2)
     
     most_active_users = serializers.ListField(
@@ -365,7 +430,10 @@ class UserStatisticsSerializer(serializers.Serializer):
     )
     recent_reviews = BookReviewSimpleSerializer(many=True, required=False)
 
-# Search serializers
+# =============================================================================
+# SEARCH SERIALIZERS
+# =============================================================================
+
 class BookSearchSerializer(serializers.ModelSerializer):
     """Book search results serializer"""
     authors = AuthorSimpleSerializer(many=True, read_only=True)
@@ -392,45 +460,36 @@ class BookSearchSerializer(serializers.ModelSerializer):
     
     def get_author(self, obj):
         """Return first author name"""
-        primary_author = obj.primary_author
-        return primary_author.full_name if primary_author else None
+        authors = obj.authors.all()
+        if authors:
+            return authors[0].full_name
+        return 'Unknown Author'
     
     def get_best_cover_medium(self, obj):
         """Return best available medium cover"""
-        return (obj.open_library_cover_medium or 
-                obj.image_url_m or 
-                obj.cover_image or None)
+        return obj.cover_image_url
 
 class AuthorSearchSerializer(serializers.ModelSerializer):
     """Author search results serializer"""
-    book_count = serializers.ReadOnlyField()
+    book_count = serializers.SerializerMethodField()
     recent_books = serializers.SerializerMethodField()
     
     class Meta:
         model = Author
         fields = ['id', 'full_name', 'book_count', 'recent_books']
     
+    def get_book_count(self, obj):
+        return obj.books.count()
+    
     def get_recent_books(self, obj):
         """Get recent books by this author"""
         recent_books = obj.books.order_by('-created_at')[:3]
         return BookListSerializer(recent_books, many=True).data
 
-# Legacy ML prediction serializers (preserved)
-class PredictionRequestSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PredictionRequest
-        fields = ['id', 'feature1', 'feature2', 'feature3', 'feature4', 'created_at']
-        read_only_fields = ['id', 'created_at']
+# =============================================================================
+# RECOMMENDATION SERIALIZERS
+# =============================================================================
 
-class PredictionResultSerializer(serializers.ModelSerializer):
-    request = PredictionRequestSerializer(read_only=True)
-    
-    class Meta:
-        model = PredictionResult
-        fields = ['id', 'request', 'prediction', 'confidence', 'created_at']
-        read_only_fields = ['id', 'created_at']
-
-# Recommendation serializers
 class BookRecommendationSerializer(serializers.ModelSerializer):
     """Book recommendation serializer"""
     authors = AuthorSimpleSerializer(many=True, read_only=True)
@@ -454,11 +513,11 @@ class BookRecommendationSerializer(serializers.ModelSerializer):
     
     def get_author(self, obj):
         """Return first author name"""
-        primary_author = obj.primary_author
-        return primary_author.full_name if primary_author else None
+        authors = obj.authors.all()
+        if authors:
+            return authors[0].full_name
+        return 'Unknown Author'
     
     def get_best_cover_medium(self, obj):
         """Return best available medium cover"""
-        return (obj.open_library_cover_medium or 
-                obj.image_url_m or 
-                obj.cover_image or None)
+        return obj.cover_image_url

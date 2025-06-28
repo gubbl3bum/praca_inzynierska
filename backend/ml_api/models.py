@@ -1,6 +1,12 @@
 from django.db import models
 from decimal import Decimal
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.contrib.auth.hashers import make_password, check_password
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.db import models
+from django.utils import timezone
+import uuid
+from datetime import timedelta
 import json
 
 class Author(models.Model):
@@ -113,15 +119,57 @@ class BookCategory(models.Model):
     class Meta:
         db_table = 'book_categories'
         unique_together = ['book', 'category']
+    
+class UserManager(BaseUserManager):
+    """Manager dla custom User modelu"""
+    
+    def create_user(self, email, username, password=None, **extra_fields):
+        """Tworzenie zwykłego użytkownika"""
+        if not email:
+            raise ValueError('Email jest wymagany')
+        if not username:
+            raise ValueError('Username jest wymagany')
+        
+        email = self.normalize_email(email)
+        user = self.model(
+            email=email,
+            username=username,
+            **extra_fields
+        )
+        user.set_password(password)  # Automatyczne hashowanie
+        user.save(using=self._db)
+        return user
+    
+    def create_superuser(self, email, username, password=None, **extra_fields):
+        """Tworzenie superusera (admina)"""
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        
+        return self.create_user(email, username, password, **extra_fields)
 
-class User(models.Model):
+class User(AbstractBaseUser, PermissionsMixin):
+    
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
-    password_hash = models.CharField(max_length=128)
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)
+    
+    # Pola wymagane przez Django auth
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+    is_superuser = models.BooleanField(default=False)
+    
+    # Timestamps
+    date_joined = models.DateTimeField(default=timezone.now)
+    last_login = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # Manager i konfiguracja
+    objects = UserManager()
+    
+    USERNAME_FIELD = 'email'  # Logowanie przez email
+    REQUIRED_FIELDS = ['username']
     
     class Meta:
         db_table = 'users'
@@ -132,6 +180,11 @@ class User(models.Model):
     
     def __str__(self):
         return self.username
+    
+    @property
+    def full_name(self):
+        """Zwraca pełne imię i nazwisko"""
+        return f"{self.first_name} {self.last_name}".strip() or self.username
 
 class UserPreferences(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='preferences')
@@ -264,3 +317,61 @@ class BookVector(models.Model):
     
     def __str__(self):
         return f"Vector for {self.book.title}"
+    
+class RefreshToken(models.Model):
+    """Model do przechowywania refresh tokenów"""
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='refresh_tokens')
+    token = models.UUIDField(default=uuid.uuid4, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+    
+    # Dodatkowe informacje dla bezpieczeństwa
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    
+    class Meta:
+        db_table = 'refresh_tokens'
+        indexes = [
+            models.Index(fields=['token']),
+            models.Index(fields=['user', 'is_active']),
+        ]
+    
+    def __str__(self):
+        return f"RefreshToken for {self.user.username}"
+    
+    def is_expired(self):
+        """Sprawdza czy token wygasł"""
+        return timezone.now() > self.expires_at
+    
+    def revoke(self):
+        """Unieważnia token"""
+        self.is_active = False
+        self.save()
+    
+    @classmethod
+    def create_for_user(cls, user, ip_address=None, user_agent=None):
+        """Tworzy nowy refresh token dla użytkownika"""
+        # Usuń stare, nieaktywne tokeny
+        cls.objects.filter(
+            user=user, 
+            is_active=False
+        ).delete()
+        
+        # Ograniczenie maksymalnej liczby aktywnych tokenów (np. 5 urządzeń)
+        active_tokens = cls.objects.filter(user=user, is_active=True).order_by('-created_at')
+        if active_tokens.count() >= 5:
+            # Usuń najstarsze tokeny
+            for token in active_tokens[4:]:
+                token.revoke()
+        
+        # Utwórz nowy token ważny przez 30 dni
+        expires_at = timezone.now() + timedelta(days=30)
+        
+        return cls.objects.create(
+            user=user,
+            expires_at=expires_at,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
