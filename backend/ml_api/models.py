@@ -322,8 +322,10 @@ class RefreshToken(models.Model):
     """Model do przechowywania refresh tokenów"""
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='refresh_tokens')
-    token = models.UUIDField(default=uuid.uuid4, unique=True)
+    token = models.CharField(max_length=500, unique=True)  # ✅ ZMIENIONO z UUIDField
+    jti = models.CharField(max_length=255, unique=True)     # ✅ DODANO!
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)        # ✅ DODANO!
     expires_at = models.DateTimeField()
     is_active = models.BooleanField(default=True)
     
@@ -335,6 +337,7 @@ class RefreshToken(models.Model):
         db_table = 'refresh_tokens'
         indexes = [
             models.Index(fields=['token']),
+            models.Index(fields=['jti']),               # ✅ DODANO!
             models.Index(fields=['user', 'is_active']),
         ]
     
@@ -362,16 +365,24 @@ class RefreshToken(models.Model):
         # Ograniczenie maksymalnej liczby aktywnych tokenów (np. 5 urządzeń)
         active_tokens = cls.objects.filter(user=user, is_active=True).order_by('-created_at')
         if active_tokens.count() >= 5:
-            # Usuń najstarsze tokeny
-            for token in active_tokens[4:]:
+            # Dezaktywuj najstarsze tokeny
+            tokens_to_deactivate = active_tokens[4:]
+            for token in tokens_to_deactivate:
                 token.revoke()
         
-        # Utwórz nowy token ważny przez 30 dni
-        expires_at = timezone.now() + timedelta(days=30)
+        # Wygeneruj JWT token
+        from rest_framework_simplejwt.tokens import RefreshToken as JWTRefreshToken
+        jwt_token = JWTRefreshToken.for_user(user)
         
-        return cls.objects.create(
+        # Utwórz nowy refresh token w bazie
+        refresh_token = cls.objects.create(
             user=user,
-            expires_at=expires_at,
+            token=str(jwt_token),
+            jti=str(jwt_token['jti']),  
+            expires_at=timezone.now() + timedelta(days=30),
             ip_address=ip_address,
-            user_agent=user_agent
+            user_agent=user_agent,
+            is_active=True
         )
+        
+        return refresh_token
