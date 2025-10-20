@@ -322,10 +322,10 @@ class RefreshToken(models.Model):
     """Model do przechowywania refresh tokenów"""
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='refresh_tokens')
-    token = models.CharField(max_length=500, unique=True)  # ✅ ZMIENIONO z UUIDField
-    jti = models.CharField(max_length=255, unique=True)     # ✅ DODANO!
+    token = models.CharField(max_length=500, unique=True)  
+    jti = models.CharField(max_length=255, unique=True)     
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)        # ✅ DODANO!
+    updated_at = models.DateTimeField(auto_now=True)        
     expires_at = models.DateTimeField()
     is_active = models.BooleanField(default=True)
     
@@ -337,7 +337,7 @@ class RefreshToken(models.Model):
         db_table = 'refresh_tokens'
         indexes = [
             models.Index(fields=['token']),
-            models.Index(fields=['jti']),               # ✅ DODANO!
+            models.Index(fields=['jti']),               
             models.Index(fields=['user', 'is_active']),
         ]
     
@@ -356,13 +356,11 @@ class RefreshToken(models.Model):
     @classmethod
     def create_for_user(cls, user, ip_address=None, user_agent=None):
         """Tworzy nowy refresh token dla użytkownika"""
-        # Usuń stare, nieaktywne tokeny
         cls.objects.filter(
             user=user, 
             is_active=False
         ).delete()
         
-        # Ograniczenie maksymalnej liczby aktywnych tokenów (np. 5 urządzeń)
         active_tokens = cls.objects.filter(user=user, is_active=True).order_by('-created_at')
         if active_tokens.count() >= 5:
             # Dezaktywuj najstarsze tokeny
@@ -370,11 +368,9 @@ class RefreshToken(models.Model):
             for token in tokens_to_deactivate:
                 token.revoke()
         
-        # Wygeneruj JWT token
         from rest_framework_simplejwt.tokens import RefreshToken as JWTRefreshToken
         jwt_token = JWTRefreshToken.for_user(user)
         
-        # Utwórz nowy refresh token w bazie
         refresh_token = cls.objects.create(
             user=user,
             token=str(jwt_token),
