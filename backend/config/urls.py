@@ -5,6 +5,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.core.paginator import Paginator
 from django.db.models import Q, Avg, Count
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+)
 import json
 
 from ml_api.views import book_recommendations, similarity_stats, recalculate_similarities
@@ -346,18 +351,30 @@ def api_status(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', health_check, name='health_check'),
+    
+    # API endpoints
     path('api/status/', api_status, name='api_status'),
     path('api/health/', health_check, name='api_health'),
+    
+    # Books API
     path('api/books/featured/', featured_books, name='featured_books'),
-    path('api/books/top-rated/', top_rated_books, name='top_rated_books'),  
-    path('api/books/<int:book_id>/', book_detail, name='book_detail'),  
+    path('api/books/top-rated/', top_rated_books, name='top_rated_books'),
+    path('api/books/<int:book_id>/', book_detail, name='book_detail'),
     path('api/books/', book_list, name='book_list'),
     path('api/categories/', categories_list, name='categories_list'),
     
     # Similarity endpoints
     path('api/books/<int:book_id>/recommendations/', book_recommendations, name='book_recommendations'),
-    path('api/books/<int:book_id>/similar/', book_recommendations, name='similar_books'),  # Alias
+    path('api/books/<int:book_id>/similar/', book_recommendations, name='similar_books'),
     path('api/similarities/stats/', similarity_stats, name='similarity_stats'),
     path('api/similarities/recalculate/', recalculate_similarities, name='recalculate_all_similarities'),
     path('api/similarities/recalculate/<int:book_id>/', recalculate_similarities, name='recalculate_book_similarities'),
+    
+    # AUTH ENDPOINTS - NOWE!
+    path('api/auth/', include('ml_api.urls_auth')),
+    
+    # JWT endpoints (standardowe)
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
 ]

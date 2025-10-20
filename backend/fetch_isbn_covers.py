@@ -21,46 +21,45 @@ class ImprovedCoverFetcher:
             'User-Agent': 'BookRecommendationSystem/1.0 (Educational Project)'
         })
         
-        # Różne sposoby na znalezienie okładek
+        # Different ways to find covers
         self.strategies = [
             self.strategy_open_library_search,
             self.strategy_open_library_direct_title,
-            self.strategy_google_books,
-            self.strategy_placeholder_generator
+            self.strategy_google_books
         ]
     
     def clean_title_for_search(self, title):
-        """Oczyść tytuł do wyszukiwania"""
+        """Clean title for search"""
         if not title:
             return ""
         
-        # Usuń znaki specjalne i normalizuj
+        # Remove special characters and normalize
         title = re.sub(r'[^\w\s]', ' ', title)
         title = re.sub(r'\s+', ' ', title).strip()
         
-        # Usuń część po dwukropku (często podtytuły)
+        # Remove the part after the colon (often subheadings)
         if ':' in title:
             title = title.split(':')[0].strip()
         
         return title
     
     def clean_author_for_search(self, author):
-        """Oczyść autora do wyszukiwania"""
+        """Clean Author for Search"""
         if not author:
             return ""
         
-        # Weź tylko pierwszego autora
+        # Take only the first author
         if ',' in author:
             author = author.split(',')[0].strip()
         
-        # Usuń "By " prefix
+        # Remove "By " prefix
         if author.startswith("By "):
             author = author[3:].strip()
         
         return author
     
     def check_cover_exists(self, url):
-        """Sprawdź czy okładka istnieje"""
+        """Check if the cover exists"""
         try:
             response = self.session.head(url, timeout=5)
             return response.status_code == 200
@@ -68,7 +67,7 @@ class ImprovedCoverFetcher:
             return False
     
     def strategy_open_library_search(self, book):
-        """Strategia 1: Wyszukiwanie w Open Library przez API"""
+        """Strategy 1: Open Library Search via API"""
         try:
             clean_title = self.clean_title_for_search(book.title)
             clean_author = self.clean_author_for_search(book.author_names)
@@ -99,14 +98,14 @@ class ImprovedCoverFetcher:
             data = response.json()
             
             for doc in data.get('docs', []):
-                # Spróbuj ISBN
+                # Try ISBN
                 if doc.get('isbn'):
-                    for isbn in doc['isbn'][:3]:  # Sprawdź pierwsze 3 ISBN
+                    for isbn in doc['isbn'][:3]:  # Check the first 3 ISBNs
                         cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
                         if self.check_cover_exists(cover_url):
                             return isbn, cover_url
                 
-                # Spróbuj cover_i (ID okładki)
+                # Try cover_i (cover ID)
                 if doc.get('cover_i'):
                     cover_url = f"https://covers.openlibrary.org/b/id/{doc['cover_i']}-L.jpg"
                     if self.check_cover_exists(cover_url):
@@ -118,13 +117,13 @@ class ImprovedCoverFetcher:
         return None, None
     
     def strategy_open_library_direct_title(self, book):
-        """Strategia 2: Bezpośrednie wyszukiwanie po tytule"""
+        """Strategy 2: Direct Title Search"""
         try:
             clean_title = self.clean_title_for_search(book.title)
             if not clean_title:
                 return None, None
             
-            # Próbuj różne warianty tytułu
+            # Try different title variations
             title_variants = [
                 clean_title,
                 clean_title.replace(' ', '+'),
@@ -160,7 +159,7 @@ class ImprovedCoverFetcher:
         return None, None
     
     def strategy_google_books(self, book):
-        """Strategia 3: Google Books API (backup)"""
+        """Strategy 3: Google Books API (backup)"""
         try:
             clean_title = self.clean_title_for_search(book.title)
             clean_author = self.clean_author_for_search(book.author_names)
@@ -193,7 +192,7 @@ class ImprovedCoverFetcher:
             for item in data.get('items', []):
                 volume_info = item.get('volumeInfo', {})
                 
-                # Pobierz okładkę
+                # Download cover
                 image_links = volume_info.get('imageLinks', {})
                 cover_url = (
                     image_links.get('large') or 
@@ -202,7 +201,7 @@ class ImprovedCoverFetcher:
                 )
                 
                 if cover_url:
-                    # Pobierz ISBN
+                    # Download ISBN
                     isbn = None
                     for identifier in volume_info.get('industryIdentifiers', []):
                         if identifier.get('type') in ['ISBN_13', 'ISBN_10']:
@@ -215,27 +214,9 @@ class ImprovedCoverFetcher:
             print(f"      Strategy 3 failed: {e}")
         
         return None, None
-    
-    def strategy_placeholder_generator(self, book):
-        """Strategia 4: Generuj placeholder okładkę (ostatnia opcja)"""
-        try:
-            # Możesz użyć serwisu do generowania placeholderów
-            # Na przykład: https://via.placeholder.com/300x400/4A90E2/FFFFFF?text=Title
-            
-            title_short = book.title[:20] if book.title else "Book"
-            title_encoded = quote(title_short)
-            
-            placeholder_url = f"https://via.placeholder.com/300x400/4A90E2/FFFFFF?text={title_encoded}"
-            
-            return None, placeholder_url
-        
-        except:
-            pass
-        
-        return None, None
-    
+     
     def find_cover_for_book(self, book):
-        """Znajdź okładkę używając wszystkich strategii"""
+        """Find a cover using all strategies"""
         print(f"📖 Searching cover for: {book.title}")
         
         for i, strategy in enumerate(self.strategies, 1):
@@ -254,15 +235,15 @@ class ImprovedCoverFetcher:
                 print(f"    💥 Strategy {i} error: {e}")
                 continue
             
-            # Krótkie opóźnienie między strategiami
-            time.sleep(0.5)
+            # Short delay between strategies
+            time.sleep(0.2)
         
         print(f"    📭 No cover found for: {book.title}")
         return None, None
     
     def update_book_with_cover(self, book):
-        """Zaktualizuj książkę z okładką"""
-        # Pomiń jeśli już ma okładkę
+        """Update book with cover"""
+        # Skip if it already has a cover
         if book.cover_image_url:
             print(f"    ✅ Already has cover: {book.title}")
             return False
@@ -292,11 +273,11 @@ class ImprovedCoverFetcher:
 
 def fetch_covers_improved(batch_size=None, delay=1.5):
     """
-    Pobierz okładki używając ulepszonych strategii
-    
+    Fetch covers using improved strategies
+
     Args:
-        batch_size: Ile książek przetworzyć (None = wszystkie)
-        delay: Opóźnienie między książkami w sekundach
+        batch_size: How many books to process (None = all)
+        delay: Delay between books in seconds
     """
     
     print("🌐 IMPROVED COVER FETCHING")
@@ -304,7 +285,7 @@ def fetch_covers_improved(batch_size=None, delay=1.5):
     
     fetcher = ImprovedCoverFetcher()
     
-    # Znajdź książki bez okładek
+    # Find books without covers
     books_without_covers = Book.objects.filter(cover_image_url__isnull=True)
     
     if batch_size:
@@ -344,7 +325,7 @@ def fetch_covers_improved(batch_size=None, delay=1.5):
             
             print()
             
-            # Opóźnienie między książkami
+            # Delay between books
             if i < len(books_without_covers):
                 time.sleep(delay)
         
@@ -353,7 +334,7 @@ def fetch_covers_improved(batch_size=None, delay=1.5):
             stats['errors'] += 1
             continue
     
-    # Podsumowanie
+    # Summary
     print("=" * 50)
     print("📊 IMPROVED FETCH SUMMARY:")
     print(f"📚 Books processed: {stats['processed']}")
@@ -368,7 +349,7 @@ def fetch_covers_improved(batch_size=None, delay=1.5):
     return True
 
 def test_single_book(book_title):
-    """Test cover fetching dla pojedynczej książki"""
+    """Cover fetching test for a single book"""
     try:
         book = Book.objects.filter(title__icontains=book_title).first()
         if not book:
