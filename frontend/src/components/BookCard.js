@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import AddToListButton from './AddToListButton';
 
 const BookCard = ({ book, onClick }) => {
   const navigate = useNavigate();
@@ -240,6 +241,9 @@ const BookCard = ({ book, onClick }) => {
             </div>
           )} */}
         </div>
+      </div>
+      <div className="mt-2">
+        <AddToListButton book={book} compact={true} />
       </div>
     </div>
   );

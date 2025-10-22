@@ -94,6 +94,14 @@ const Navbar = () => {
                   >
                     ⭐ My Reviews
                   </Link>
+
+                  <Link
+                    to="/lists"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    📚 My Lists
+                  </Link>
                   
                   <div className="border-t border-gray-100 mt-1">
                     <button

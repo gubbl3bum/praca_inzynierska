@@ -13,6 +13,7 @@ import UserProfile from "./pages/UserProfile";
 import BookDetails from "./pages/BookDetails";
 import UserFavourites from "./pages/UserFavourites";
 import UserReviews from "./pages/UserReviews";
+import UserLists from "./pages/UserLists";
 
 // Auth pages
 import LoginForm from "./components/auth/LoginForm";
@@ -72,6 +73,14 @@ function App() {
               element={
                 <ProtectedRoute requireAuth={true}>
                   <UserReviews />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/lists" 
+              element={
+                <ProtectedRoute requireAuth={true}>
+                  <UserLists />
                 </ProtectedRoute>
               } 
             />

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import SimilarBooks from '../components/SimilarBooks';
+import AddToListButton from '../components/AddToListButton';
 
 const BookDetails = () => {
   const { id } = useParams();
@@ -309,6 +310,17 @@ const BookDetails = () => {
 
               {/* Action buttons */}
               <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-3">
+                  <AddToListButton book={book} />
+                  
+                  <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-colors">
+                    Mark as Read
+                  </button>
+                  
+                  <button className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors">
+                    Write Review
+                  </button>
+                </div>
                 <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors">
                   Add to Reading List
                 </button>

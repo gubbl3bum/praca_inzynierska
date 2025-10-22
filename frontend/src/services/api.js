@@ -403,6 +403,153 @@ export const authAPI = {
   }
 };
 
+// Lists API functions
+export const listsAPI = {
+  // Get all user's lists
+  getLists: async (accessToken, params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const endpoint = queryString ? `/lists/?${queryString}` : '/lists/';
+    return apiCall(endpoint, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  // Initialize default lists
+  initializeDefaultLists: async (accessToken) => {
+    return apiCall('/lists/initialize/', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  // Get list details
+  getListDetail: async (listId, accessToken) => {
+    return apiCall(`/lists/${listId}/`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  // Create new list
+  createList: async (listData, accessToken) => {
+    return apiCall('/lists/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(listData)
+    });
+  },
+  
+  // Update list
+  updateList: async (listId, listData, accessToken) => {
+    return apiCall(`/lists/${listId}/`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(listData)
+    });
+  },
+  
+  // Delete list
+  deleteList: async (listId, accessToken) => {
+    return apiCall(`/lists/${listId}/`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  // Add book to list
+  addBookToList: async (listId, bookId, accessToken, options = {}) => {
+    return apiCall(`/lists/${listId}/add/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        book_id: bookId,
+        ...options
+      })
+    });
+  },
+  
+  // Remove book from list
+  removeBookFromList: async (listId, itemId, accessToken) => {
+    return apiCall(`/lists/${listId}/items/${itemId}/`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  // Update list item
+  updateListItem: async (listId, itemId, data, accessToken) => {
+    return apiCall(`/lists/${listId}/items/${itemId}/`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(data)
+    });
+  },
+  
+  // Quick actions
+  quickAddToFavorites: async (bookId, accessToken) => {
+    return apiCall(`/lists/quick/favorites/${bookId}/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  quickAddToReading: async (bookId, accessToken) => {
+    return apiCall(`/lists/quick/reading/${bookId}/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  checkBookInLists: async (bookId, accessToken) => {
+    return apiCall(`/lists/quick/check/${bookId}/`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  // Reading progress
+  getReadingProgress: async (accessToken, params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const endpoint = queryString ? `/lists/progress/?${queryString}` : '/lists/progress/';
+    return apiCall(endpoint, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+  },
+  
+  updateReadingProgress: async (bookId, progressData, accessToken) => {
+    return apiCall(`/lists/progress/book/${bookId}/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(progressData)
+    });
+  }
+};
+
 // Export default API object
 const api = {
   books: booksAPI,
@@ -413,7 +560,8 @@ const api = {
   openLibrary: openLibraryUtils,
   pagination: paginationUtils,
   data: dataUtils,
-  handleError: handleApiError
+  handleError: handleApiError,
+  lists: listsAPI, 
 };
 
 export default api;
