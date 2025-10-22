@@ -70,7 +70,6 @@ const AddToListButton = ({ book, compact = false }) => {
         setMessage({ type: 'success', text: 'Book added to list!' });
         await checkBookInLists();
         
-        // Clear message after 2 seconds
         setTimeout(() => {
           setMessage({ type: '', text: '' });
           setShowMenu(false);
@@ -93,7 +92,9 @@ const AddToListButton = ({ book, compact = false }) => {
       const tokens = token ? JSON.parse(token) : null;
       
       if (!tokens?.access) {
-        alert('Please log in first');
+        setMessage({ type: 'error', text: 'Please log in first' });
+        setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+        setLoading(false);
         return;
       }
 
@@ -109,6 +110,10 @@ const AddToListButton = ({ book, compact = false }) => {
     } catch (error) {
       const errorMessage = api.handleError(error, 'Failed to add to favorites');
       setMessage({ type: 'error', text: errorMessage });
+      
+      setTimeout(() => {
+        setMessage({ type: '', text: '' });
+      }, 3000);
     } finally {
       setLoading(false);
     }
@@ -123,20 +128,19 @@ const AddToListButton = ({ book, compact = false }) => {
   }
 
   if (compact) {
-    // Compact mode - just heart icon
     return (
       <div className="relative">
         <button
           onClick={handleQuickAddToFavorites}
           disabled={loading}
-          className="p-2 text-gray-600 hover:text-red-500 transition-colors disabled:opacity-50"
+          className="p-2 bg-white bg-opacity-90 hover:bg-opacity-100 rounded-full shadow-md text-gray-600 hover:text-red-500 transition-all disabled:opacity-50"
           title="Add to favorites"
         >
           ❤️
         </button>
         
         {message.text && (
-          <div className={`absolute top-full left-0 mt-1 px-2 py-1 rounded text-xs whitespace-nowrap z-10 ${
+          <div className={`absolute top-full left-0 mt-1 px-2 py-1 rounded text-xs whitespace-nowrap z-20 shadow-lg ${
             message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
           }`}>
             {message.text}
@@ -146,7 +150,6 @@ const AddToListButton = ({ book, compact = false }) => {
     );
   }
 
-  // Full mode - dropdown menu
   return (
     <div className="relative">
       <button
@@ -162,21 +165,17 @@ const AddToListButton = ({ book, compact = false }) => {
 
       {showMenu && (
         <>
-          {/* Overlay */}
           <div
             className="fixed inset-0 z-40"
             onClick={() => setShowMenu(false)}
           ></div>
 
-          {/* Dropdown menu */}
           <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
             
-            {/* Header */}
             <div className="px-4 py-3 border-b border-gray-200">
               <h3 className="font-semibold text-gray-800">Add to list</h3>
             </div>
 
-            {/* Message */}
             {message.text && (
               <div className={`mx-4 my-2 px-3 py-2 rounded text-sm ${
                 message.type === 'success' 
@@ -187,7 +186,6 @@ const AddToListButton = ({ book, compact = false }) => {
               </div>
             )}
 
-            {/* Lists */}
             {loading ? (
               <div className="px-4 py-8 text-center text-gray-500">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto mb-2"></div>
@@ -241,11 +239,9 @@ const AddToListButton = ({ book, compact = false }) => {
               </div>
             )}
 
-            {/* Footer */}
             <div className="px-4 py-3 border-t border-gray-200">
               <button
                 onClick={() => {
-                  // TODO: Implement create list modal
                   alert('Create list feature coming soon!');
                 }}
                 className="w-full text-blue-600 hover:text-blue-700 text-sm font-medium"

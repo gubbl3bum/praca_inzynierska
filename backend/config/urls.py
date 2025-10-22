@@ -15,6 +15,20 @@ import json
 
 from ml_api.views import book_recommendations, similarity_stats, recalculate_similarities
 
+def api_root(request):
+    return JsonResponse({
+        'message': 'WolfRead API',
+        'version': '1.0',
+        'endpoints': {
+            'admin': '/admin/',
+            'books': '/api/books/',
+            'categories': '/api/categories/',
+            'auth': '/api/auth/',
+            'lists': '/api/lists/',
+            'status': '/api/status/',
+        }
+    })
+
 def health_check(request):
     """Simple health check endpoint"""
     return JsonResponse({
@@ -305,7 +319,7 @@ def book_detail(request, book_id):
 
 @api_view(['GET'])
 def categories_list(request):
-    """Lista kategorii"""
+    """List of categories"""
     try:
         from ml_api.models import Category
         

@@ -7,7 +7,6 @@ const BookCard = ({ book, onClick }) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
 
-  // BEZPIECZNE SPRAWDZENIE BOOK OBJECT
   if (!book) {
     return (
       <div className="bg-white rounded-lg shadow-md p-4 flex flex-col h-full">
@@ -19,7 +18,6 @@ const BookCard = ({ book, onClick }) => {
     );
   }
 
-  // BEZPIECZNE WARTOŚCI Z FALLBACKAMI
   const {
     id = 'unknown',
     title = 'Unknown Title',
@@ -38,13 +36,11 @@ const BookCard = ({ book, onClick }) => {
     categories = []
   } = book;
 
-  // FORMATOWANIE DANYCH
   const displayPrice = price ? `$${price}` : null;
   const displayYear = publish_year || publication_year;
   const displayYearText = displayYear ? ` (${displayYear})` : '';
   const displayRating = average_rating ? Number(average_rating).toFixed(1) : '0.0';
   
-  // Obsługuj różne formaty autorów
   let displayAuthors = 'Unknown Author';
   if (typeof authors === 'string' && authors !== 'Unknown Author') {
     displayAuthors = authors;
@@ -58,20 +54,11 @@ const BookCard = ({ book, onClick }) => {
     ? description.substring(0, 100) + '...' 
     : description;
 
-  // 🖼️ POPRAWIONE: Wybór najlepszej okładki z debugowaniem
   const coverUrl = cover_image_url || best_cover_medium || image_url_m;
-  
-  // Debug - pokaż jaką okładkę próbujemy załadować
-  React.useEffect(() => {
-    if (coverUrl) {
-      console.log(`📖 ${title}: Trying to load cover: ${coverUrl}`);
-    }
-  }, [coverUrl, title]);
 
-  // Renderowanie gwiazdek dla oceny 0-10
   const renderStars = (rating) => {
     const stars = [];
-    const scaledRating = rating / 2; // Konwersja z 0-10 na 0-5
+    const scaledRating = rating / 2;
     const fullStars = Math.floor(scaledRating);
     const hasHalfStar = scaledRating % 1 >= 0.5;
     
@@ -91,13 +78,11 @@ const BookCard = ({ book, onClick }) => {
     return stars;
   };
 
-  // Obsługa kliknięcia
   const handleClick = () => {
     if (onClick) {
       onClick(book);
     }
     
-    // Nawigacja do szczegółów książki
     if (id && id !== 'unknown') {
       navigate(`/book/${id}`, { 
         state: { book }
@@ -105,7 +90,6 @@ const BookCard = ({ book, onClick }) => {
     }
   };
 
-  // 🖼️ Obsługa błędów ładowania obrazka
   const handleImageError = () => {
     console.log(`❌ Failed to load cover for ${title}: ${coverUrl}`);
     setImageError(true);
@@ -120,14 +104,17 @@ const BookCard = ({ book, onClick }) => {
 
   return (
     <div 
-      className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 cursor-pointer overflow-hidden flex flex-col h-full"
-      onClick={handleClick}
+      className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 cursor-pointer overflow-hidden flex flex-col h-full relative"
     >
-      {/* 🖼️ POPRAWIONA SEKCJA OKŁADKI */}
-      <div className="relative aspect-[3/4] w-full flex items-center justify-center overflow-hidden">
+      {/* Add to list button - COMPACT mode, positioned absolutely */}
+      <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()}>
+        <AddToListButton book={book} compact={true} />
+      </div>
+
+      {/* Cover image */}
+      <div className="relative aspect-[3/4] w-full flex items-center justify-center overflow-hidden" onClick={handleClick}>
         {coverUrl && !imageError ? (
           <>
-            {/* Obrazek okładki */}
             <img 
               src={coverUrl} 
               alt={`Cover of ${title}`}
@@ -141,7 +128,6 @@ const BookCard = ({ book, onClick }) => {
               }}
             />
             
-            {/* Loading placeholder podczas ładowania */}
             {imageLoading && (
               <div className="absolute inset-0 bg-gray-200 flex items-center justify-center">
                 <div className="text-gray-400 text-lg">📖</div>
@@ -149,13 +135,11 @@ const BookCard = ({ book, onClick }) => {
             )}
           </>
         ) : (
-          /* Placeholder gdy brak okładki lub błąd ładowania */
           <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-4xl">
             📚
           </div>
         )}
         
-        {/* Rating badge */}
         {average_rating > 0 && (
           <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs font-medium">
             ⭐ {displayRating}
@@ -164,7 +148,7 @@ const BookCard = ({ book, onClick }) => {
       </div>
 
       {/* Book Info */}
-      <div className="p-4 flex-1 flex flex-col">
+      <div className="p-4 flex-1 flex flex-col" onClick={handleClick}>
         <h3 className="font-semibold text-gray-800 mb-1 line-clamp-2 flex-shrink-0">
           {title}{displayYearText}
         </h3>
@@ -173,7 +157,6 @@ const BookCard = ({ book, onClick }) => {
           {displayAuthors}
         </p>
         
-        {/* Categories */}
         {categories && categories.length > 0 && (
           <div className="mb-2 flex-shrink-0">
             <div className="flex flex-wrap gap-1">
@@ -192,16 +175,13 @@ const BookCard = ({ book, onClick }) => {
           </div>
         )}
 
-        {/* Description */}
         {shortDescription && (
           <p className="text-xs text-gray-500 mb-3 line-clamp-2 flex-1">
             {shortDescription}
           </p>
         )}
 
-        {/* Bottom info */}
         <div className="mt-auto">
-          {/* Rating */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1">
               <div className="flex text-sm">
@@ -219,7 +199,6 @@ const BookCard = ({ book, onClick }) => {
             )}
           </div>
           
-          {/* Price and additional info */}
           <div className="flex items-center justify-between text-xs">
             {displayPrice && (
               <div className="font-medium text-green-600">
@@ -233,17 +212,7 @@ const BookCard = ({ book, onClick }) => {
               </div>
             )}
           </div>
-          
-          {/* 🔍 DEBUG INFO - usuń w produkcji
-          {process.env.NODE_ENV === 'development' && coverUrl && (
-            <div className="text-xs text-gray-400 mt-1 truncate" title={coverUrl}>
-              Cover: {coverUrl.substring(0, 30)}...
-            </div>
-          )} */}
         </div>
-      </div>
-      <div className="mt-2">
-        <AddToListButton book={book} compact={true} />
       </div>
     </div>
   );
