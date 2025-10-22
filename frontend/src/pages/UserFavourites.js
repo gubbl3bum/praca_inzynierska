@@ -1,30 +1,239 @@
-import React from 'react';
-import BookCard from '../components/BookCard'; 
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../services/AuthContext';
+import BookCard from '../components/BookCard';
+import api from '../services/api';
 
 const UserFavorites = () => {
-  // Sample data
-  const favoriteBooks = [
-    { title: '1984', author: 'George Orwell' },
-    { title: 'To Kill a Mockingbird', author: 'Harper Lee' },
-    { title: 'Pride and Prejudice', author: 'Jane Austen' },
-    { title: 'The Great Gatsby', author: 'F. Scott Fitzgerald' },
-    { title: 'Moby Dick', author: 'Herman Melville' },
-  ];
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const [favoritesList, setFavoritesList] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+    fetchFavorites();
+  }, [isAuthenticated]);
+
+  const fetchFavorites = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const token = localStorage.getItem('wolfread_tokens');
+      const tokens = token ? JSON.parse(token) : null;
+      
+      if (!tokens?.access) {
+        navigate('/login');
+        return;
+      }
+
+      // Pobierz wszystkie listy
+      const listsResponse = await api.lists.getLists(tokens.access);
+      
+      if (listsResponse.status === 'success') {
+        // Znajdź listę "Favorites"
+        const favList = listsResponse.lists?.find(list => list.list_type === 'favorites');
+        
+        if (favList) {
+          // Pobierz szczegóły listy z książkami
+          const detailResponse = await api.lists.getListDetail(favList.id, tokens.access);
+          
+          if (detailResponse.status === 'success') {
+            setFavoritesList(detailResponse.list);
+          }
+        } else {
+          // Jeśli nie ma listy favorites, zainicjuj domyślne listy
+          await api.lists.initializeDefaultLists(tokens.access);
+          // Ponów próbę pobrania
+          await fetchFavorites();
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching favorites:', err);
+      setError(api.handleError(err, 'Failed to load favorites'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveFromFavorites = async (itemId) => {
+    if (!window.confirm('Remove this book from favorites?')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('wolfread_tokens');
+      const tokens = token ? JSON.parse(token) : null;
+      
+      if (!tokens?.access) return;
+
+      const response = await api.lists.removeBookFromList(
+        favoritesList.id,
+        itemId,
+        tokens.access
+      );
+      
+      if (response.status === 'success') {
+        // Odśwież listę
+        await fetchFavorites();
+      }
+    } catch (err) {
+      console.error('Error removing book:', err);
+      alert(api.handleError(err, 'Failed to remove book'));
+    }
+  };
+
+  const handleBookClick = (book) => {
+    console.log('Clicked favorite book:', book);
+    // Navigation jest obsługiwana w BookCard
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your favorites...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Error Loading Favorites</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={fetchFavorites}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="px-4 py-12 max-w-6xl mx-auto">
-    <h1 className="text-3xl font-bold text-center text-blue-700 mb-8">
-      ❤️ Your Favourite Books
-    </h1>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-8">
+        
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">
+            ❤️ Your Favorite Books
+          </h1>
+          <p className="text-gray-600">
+            {favoritesList?.book_count || 0} book{favoritesList?.book_count !== 1 ? 's' : ''} in your favorites
+          </p>
+        </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {favoriteBooks.map((book, idx) => (
-          <BookCard
-            key={idx}
-            title={book.title}
-            author={book.author}
-          />
-        ))}
+        {/* Books grid */}
+        {favoritesList?.items && favoritesList.items.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            {favoritesList.items.map((item) => (
+              <div key={item.id} className="relative">
+                <BookCard 
+                  book={item.book}
+                  onClick={handleBookClick}
+                />
+                
+                {/* Remove button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemoveFromFavorites(item.id);
+                  }}
+                  className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg z-10 transition-colors"
+                  title="Remove from favorites"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 bg-white rounded-lg shadow-md">
+            <div className="text-6xl mb-4">💔</div>
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+              No Favorites Yet
+            </h3>
+            <p className="text-gray-500 mb-6">
+              Start adding books to your favorites to see them here!
+            </p>
+            <Link
+              to="/catalog"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-block transition-colors"
+            >
+              Browse Books
+            </Link>
+          </div>
+        )}
+
+        {/* Statistics */}
+        {favoritesList?.items && favoritesList.items.length > 0 && (
+          <div className="mt-12 bg-gradient-to-r from-pink-500 to-red-600 rounded-lg p-8 text-white">
+            <h3 className="text-2xl font-bold mb-4">❤️ Your Favorites Statistics</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="text-center">
+                <div className="text-3xl font-bold">
+                  {favoritesList.book_count}
+                </div>
+                <div className="text-pink-100">Total Favorites</div>
+              </div>
+              
+              <div className="text-center">
+                <div className="text-3xl font-bold">
+                  {favoritesList.items.length > 0 
+                    ? (favoritesList.items.reduce((sum, item) => sum + (item.book.average_rating || 0), 0) / favoritesList.items.length).toFixed(1)
+                    : '0.0'
+                  }⭐
+                </div>
+                <div className="text-pink-100">Average Rating</div>
+              </div>
+              
+              <div className="text-center">
+                <div className="text-3xl font-bold">
+                  {new Set(favoritesList.items.flatMap(item => item.book.categories || [])).size}
+                </div>
+                <div className="text-pink-100">Different Categories</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Quick actions */}
+        <div className="mt-8 flex flex-wrap gap-4 justify-center">
+          <Link
+            to="/lists"
+            className="bg-white hover:bg-gray-50 text-gray-800 px-6 py-3 rounded-lg shadow-md transition-colors border border-gray-200"
+          >
+            📚 View All Lists
+          </Link>
+          
+          <Link
+            to="/catalog"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow-md transition-colors"
+          >
+            🔍 Browse More Books
+          </Link>
+          
+          <button
+            onClick={fetchFavorites}
+            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg shadow-md transition-colors"
+          >
+            🔄 Refresh
+          </button>
+        </div>
       </div>
     </div>
   );

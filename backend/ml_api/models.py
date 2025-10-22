@@ -416,9 +416,8 @@ class BookList(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.name}"
     
-    @property
-    def book_count(self):
-        """Get number of books in list"""
+    def get_book_count(self):
+        """Get number of books in list - zwykła metoda zamiast property"""
         return self.items.count()
     
     @classmethod
@@ -441,7 +440,7 @@ class BookList(models.Model):
             created_lists.append(book_list)
         
         return created_lists
-
+    
 class BookListItem(models.Model):
     """
     Item in a book list

@@ -557,7 +557,7 @@ class BookListDetailSerializer(serializers.ModelSerializer):
 
 class BookListSimpleSerializer(serializers.ModelSerializer):
     """Simple book list without items"""
-    book_count = serializers.ReadOnlyField()
+    book_count = serializers.SerializerMethodField()  # Zmień na SerializerMethodField
     
     class Meta:
         model = BookList
@@ -566,6 +566,30 @@ class BookListSimpleSerializer(serializers.ModelSerializer):
             'is_default', 'book_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'is_default', 'created_at', 'updated_at']
+    
+    def get_book_count(self, obj):
+        """Get book count for the list"""
+        return obj.items.count()
+
+
+class BookListDetailSerializer(serializers.ModelSerializer):
+    """Detailed book list with items"""
+    items = BookListItemSerializer(many=True, read_only=True)
+    book_count = serializers.SerializerMethodField()  # Zmień na SerializerMethodField
+    user_username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = BookList
+        fields = [
+            'id', 'name', 'list_type', 'description', 'is_public', 
+            'is_default', 'book_count', 'user_username',
+            'items', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'is_default', 'created_at', 'updated_at']
+    
+    def get_book_count(self, obj):
+        """Get book count for the list"""
+        return obj.items.count()
 
 class BookListCreateUpdateSerializer(serializers.ModelSerializer):
     """Create/update book list"""
