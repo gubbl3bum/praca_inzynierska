@@ -25,7 +25,6 @@ const UserProfile = () => {
   const [updateError, setUpdateError] = useState(null);
   const [updateSuccess, setUpdateSuccess] = useState(null);
 
-  // Załaduj dane użytkownika po zamontowaniu komponentu
   useEffect(() => {
     if (user) {
       setProfileData({
@@ -50,7 +49,6 @@ const UserProfile = () => {
         setUpdateSuccess('Profile updated successfully! ✅');
         setShowProfileEdit(false);
         
-        // Clear success message after 3 seconds
         setTimeout(() => setUpdateSuccess(null), 3000);
       } else {
         setUpdateError(result.error || 'Failed to update profile');
