@@ -10,6 +10,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
     TokenVerifyView,
 )
+from ml_api import views_lists
 import json
 
 from ml_api.views import book_recommendations, similarity_stats, recalculate_similarities
@@ -23,7 +24,7 @@ def health_check(request):
 
 @api_view(['GET'])
 def featured_books(request):
-    """Polecane książki dla strony głównej"""
+    """Featured books for the home page"""
     try:
         from ml_api.models import Book
         
@@ -73,11 +74,11 @@ def featured_books(request):
 
 @api_view(['GET'])
 def book_list(request):
-    """Lista książek z paginacją i filtrowaniem"""
+    """Book list with pagination and filtering"""
     try:
         from ml_api.models import Book
         
-        # Parametry z requesta
+        # Parameters from the request
         page = int(request.GET.get('page', 1))
         page_size = int(request.GET.get('page_size', 20))
         search = request.GET.get('search', '').strip()
@@ -88,10 +89,10 @@ def book_list(request):
         rating_min = request.GET.get('rating_min', '').strip()
         sort = request.GET.get('sort', '-created_at')
         
-        # Budowanie query
+        # Building a query
         books = Book.objects.all()
         
-        # Filtrowanie
+        # Filtration
         if search:
             books = books.filter(
                 Q(title__icontains=search) | 
@@ -128,10 +129,10 @@ def book_list(request):
             except ValueError:
                 pass
         
-        # Usuń duplikaty
+        # Remove duplicates
         books = books.distinct()
         
-        # Sortowanie
+        # Sorting
         if sort == 'title':
             books = books.order_by('title')
         elif sort == '-title':
@@ -147,7 +148,7 @@ def book_list(request):
         else:
             books = books.order_by(sort)
         
-        # Paginacja
+        # Pagination
         paginator = Paginator(books, page_size)
         page_obj = paginator.get_page(page)
         
@@ -186,31 +187,31 @@ def book_list(request):
 
 @api_view(['GET'])
 def top_rated_books(request):
-    """Top książki z najlepszymi ocenami"""
+    """Top books with the best ratings"""
     try:
         from ml_api.models import Book
         
-        # Parametry
+        # Parameters
         page = int(request.GET.get('page', 1))
         page_size = int(request.GET.get('page_size', 20))
         filter_type = request.GET.get('filter', 'all')
         
-        # Budowanie query - tylko książki z ocenami
+        # Building a query - only books with ratings
         books = Book.objects.annotate(
             avg_rating=Avg('reviews__rating'),
             review_count=Count('reviews')
         ).filter(review_count__gte=1)
         
-        # Filtrowanie czasowe
+        # Temporal filtering
         if filter_type == 'recent':
-            books = books.filter(publish_year__gte=2019)  # Ostatnie 5 lat
+            books = books.filter(publish_year__gte=2019)  # Last 5 years
         elif filter_type == 'classic':
             books = books.filter(publish_year__lt=2000)
         
-        # Sortowanie według średniej oceny
+        # Sort by average rating
         books = books.order_by('-avg_rating', '-review_count')
         
-        # Paginacja
+        # Pagination
         paginator = Paginator(books, page_size)
         page_obj = paginator.get_page(page)
         
@@ -255,7 +256,7 @@ def top_rated_books(request):
 
 @api_view(['GET'])
 def book_detail(request, book_id):
-    """Szczegóły pojedynczej książki"""
+    """Details of a single book"""
     try:
         from ml_api.models import Book
         
@@ -352,29 +353,32 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', health_check, name='health_check'),
     
-    # API endpoints
+    # API ENDPOINTS
     path('api/status/', api_status, name='api_status'),
     path('api/health/', health_check, name='api_health'),
     
-    # Books API
+    # BOOOKS API
     path('api/books/featured/', featured_books, name='featured_books'),
     path('api/books/top-rated/', top_rated_books, name='top_rated_books'),
     path('api/books/<int:book_id>/', book_detail, name='book_detail'),
     path('api/books/', book_list, name='book_list'),
     path('api/categories/', categories_list, name='categories_list'),
     
-    # Similarity endpoints
+    # SIMILARITY ENDPOINTS
     path('api/books/<int:book_id>/recommendations/', book_recommendations, name='book_recommendations'),
     path('api/books/<int:book_id>/similar/', book_recommendations, name='similar_books'),
     path('api/similarities/stats/', similarity_stats, name='similarity_stats'),
     path('api/similarities/recalculate/', recalculate_similarities, name='recalculate_all_similarities'),
     path('api/similarities/recalculate/<int:book_id>/', recalculate_similarities, name='recalculate_book_similarities'),
     
-    # AUTH ENDPOINTS - NOWE!
+    # AUTH ENDPOINTS 
     path('api/auth/', include('ml_api.urls_auth')),
     
-    # JWT endpoints (standardowe)
+    # JWT ENDPOINTS
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+
+    # BOOK LISTS API
+    path('api/lists/', include('ml_api.urls_lists')),
 ]

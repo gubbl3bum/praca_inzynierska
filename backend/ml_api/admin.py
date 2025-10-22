@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
     Book, Author, Publisher, Category, BookAuthor, BookCategory,
-    User, UserPreferences, BookReview
+    User, UserPreferences, BookReview, BookList, BookListItem,
+    ReadingProgress
 )
 
 @admin.register(Author)
@@ -95,3 +96,28 @@ class BookCategoryAdmin(admin.ModelAdmin):
     list_display = ('book', 'category', 'created_at')
     search_fields = ('book__title', 'category__name')
     list_filter = ('created_at',)
+
+@admin.register(BookList)
+class BookListAdmin(admin.ModelAdmin):
+    list_display = ('name', 'user', 'list_type', 'is_public', 'is_default', 'book_count', 'created_at')
+    list_filter = ('list_type', 'is_public', 'is_default', 'created_at')
+    search_fields = ('name', 'user__username', 'description')
+    readonly_fields = ('created_at', 'updated_at', 'book_count')
+    
+    def book_count(self, obj):
+        return obj.items.count()
+    book_count.short_description = 'Books'
+
+@admin.register(BookListItem)
+class BookListItemAdmin(admin.ModelAdmin):
+    list_display = ('book', 'book_list', 'priority', 'added_at')
+    list_filter = ('added_at', 'book_list__list_type')
+    search_fields = ('book__title', 'book_list__name', 'notes')
+    readonly_fields = ('added_at', 'updated_at')
+
+@admin.register(ReadingProgress)
+class ReadingProgressAdmin(admin.ModelAdmin):
+    list_display = ('user', 'book', 'status', 'progress_percentage', 'started_at', 'finished_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('user__username', 'book__title')
+    readonly_fields = ('created_at', 'updated_at')
