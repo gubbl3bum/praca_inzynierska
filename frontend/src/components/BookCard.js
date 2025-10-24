@@ -41,13 +41,36 @@ const BookCard = ({ book, onClick }) => {
   const displayYearText = displayYear ? ` (${displayYear})` : '';
   const displayRating = average_rating ? Number(average_rating).toFixed(1) : '0.0';
   
+  // POPRAWKA: Bezpieczne przetwarzanie authors
   let displayAuthors = 'Unknown Author';
+  
   if (typeof authors === 'string' && authors !== 'Unknown Author') {
     displayAuthors = authors;
   } else if (Array.isArray(authors) && authors.length > 0) {
-    displayAuthors = authors.map(a => typeof a === 'string' ? a : a.name || a.full_name || 'Unknown').join(', ');
+    // Jeśli to tablica obiektów
+    displayAuthors = authors.map(a => {
+      if (typeof a === 'string') return a;
+      if (typeof a === 'object' && a !== null) {
+        return a.name || a.full_name || a.first_name + ' ' + a.last_name || 'Unknown';
+      }
+      return 'Unknown';
+    }).filter(Boolean).join(', ');
+  } else if (typeof authors === 'object' && authors !== null) {
+    // Jeśli to pojedynczy obiekt
+    displayAuthors = authors.name || authors.full_name || 
+                     (authors.first_name && authors.last_name 
+                       ? `${authors.first_name} ${authors.last_name}` 
+                       : 'Unknown Author');
   } else if (author) {
-    displayAuthors = typeof author === 'string' ? author : author.name || author.full_name || 'Unknown Author';
+    // Fallback na pole author
+    if (typeof author === 'string') {
+      displayAuthors = author;
+    } else if (typeof author === 'object' && author !== null) {
+      displayAuthors = author.name || author.full_name || 
+                      (author.first_name && author.last_name 
+                        ? `${author.first_name} ${author.last_name}` 
+                        : 'Unknown Author');
+    }
   }
 
   const shortDescription = description && description.length > 100 
@@ -101,6 +124,17 @@ const BookCard = ({ book, onClick }) => {
     setImageError(false);
     setImageLoading(false);
   };
+
+  // POPRAWKA: Bezpieczne przetwarzanie categories
+  const displayCategories = Array.isArray(categories) 
+    ? categories.map(cat => {
+        if (typeof cat === 'string') return cat;
+        if (typeof cat === 'object' && cat !== null) {
+          return cat.name || 'Unknown';
+        }
+        return null;
+      }).filter(Boolean)
+    : [];
 
   return (
     <div 
@@ -157,10 +191,10 @@ const BookCard = ({ book, onClick }) => {
           {displayAuthors}
         </p>
         
-        {categories && categories.length > 0 && (
+        {displayCategories.length > 0 && (
           <div className="mb-2 flex-shrink-0">
             <div className="flex flex-wrap gap-1">
-              {categories.slice(0, 2).map((category, index) => (
+              {displayCategories.slice(0, 2).map((category, index) => (
                 <span 
                   key={index}
                   className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full"
@@ -168,8 +202,8 @@ const BookCard = ({ book, onClick }) => {
                   {category}
                 </span>
               ))}
-              {categories.length > 2 && (
-                <span className="text-xs text-gray-500">+{categories.length - 2}</span>
+              {displayCategories.length > 2 && (
+                <span className="text-xs text-gray-500">+{displayCategories.length - 2}</span>
               )}
             </div>
           </div>

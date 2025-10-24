@@ -123,6 +123,19 @@ const AddToListButton = ({ book, compact = false }) => {
     return bookLists.some(l => l.id === listId);
   };
 
+  // POPRAWKA: Bezpieczne wyświetlanie book_count
+  const getBookCount = (list) => {
+    // book_count może być liczbą lub obiektem z metadanymi
+    if (typeof list.book_count === 'number') {
+      return list.book_count;
+    }
+    // Jeśli to obiekt, spróbuj wyciągnąć wartość
+    if (typeof list.book_count === 'object' && list.book_count !== null) {
+      return 0; // Domyślnie 0 jeśli to obiekt
+    }
+    return 0;
+  };
+
   if (!isAuthenticated) {
     return null;
   }
@@ -210,32 +223,36 @@ const AddToListButton = ({ book, compact = false }) => {
               </div>
             ) : (
               <div className="py-2">
-                {lists.map((list) => (
-                  <button
-                    key={list.id}
-                    onClick={() => handleAddToList(list.id)}
-                    disabled={isBookInList(list.id)}
-                    className={`w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center justify-between transition-colors ${
-                      isBookInList(list.id) ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    <div>
-                      <div className="font-medium text-gray-800">
-                        {list.name}
-                        {list.is_default && (
-                          <span className="ml-2 text-xs text-blue-600">Default</span>
-                        )}
+                {lists.map((list) => {
+                  const bookCount = getBookCount(list);
+                  
+                  return (
+                    <button
+                      key={list.id}
+                      onClick={() => handleAddToList(list.id)}
+                      disabled={isBookInList(list.id)}
+                      className={`w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center justify-between transition-colors ${
+                        isBookInList(list.id) ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      <div>
+                        <div className="font-medium text-gray-800">
+                          {list.name}
+                          {list.is_default && (
+                            <span className="ml-2 text-xs text-blue-600">Default</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {bookCount} book{bookCount !== 1 ? 's' : ''}
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {list.book_count} book{list.book_count !== 1 ? 's' : ''}
-                      </div>
-                    </div>
-                    
-                    {isBookInList(list.id) && (
-                      <span className="text-green-600 text-sm">✓ Added</span>
-                    )}
-                  </button>
-                ))}
+                      
+                      {isBookInList(list.id) && (
+                        <span className="text-green-600 text-sm">✓ Added</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
 

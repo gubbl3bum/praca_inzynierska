@@ -557,7 +557,7 @@ class BookListDetailSerializer(serializers.ModelSerializer):
 
 class BookListSimpleSerializer(serializers.ModelSerializer):
     """Simple book list without items"""
-    book_count = serializers.SerializerMethodField()  # Zmień na SerializerMethodField
+    book_count = serializers.SerializerMethodField()
     
     class Meta:
         model = BookList
@@ -569,7 +569,8 @@ class BookListSimpleSerializer(serializers.ModelSerializer):
     
     def get_book_count(self, obj):
         """Get book count for the list"""
-        return obj.items.count()
+        count = obj.items.count()
+        return int(count)  
 
 
 class BookListDetailSerializer(serializers.ModelSerializer):
