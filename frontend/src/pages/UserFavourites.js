@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../services/AuthContext';
 import BookCard from '../components/BookCard';
+import AddToListButton from '../components/AddToListButton';
 import api from '../services/api';
 
 const UserFavorites = () => {
@@ -32,24 +33,19 @@ const UserFavorites = () => {
         return;
       }
 
-      // Pobierz wszystkie listy
       const listsResponse = await api.lists.getLists(tokens.access);
       
       if (listsResponse.status === 'success') {
-        // Znajdź listę "Favorites"
         const favList = listsResponse.lists?.find(list => list.list_type === 'favorites');
         
         if (favList) {
-          // Pobierz szczegóły listy z książkami
           const detailResponse = await api.lists.getListDetail(favList.id, tokens.access);
           
           if (detailResponse.status === 'success') {
             setFavoritesList(detailResponse.list);
           }
         } else {
-          // Jeśli nie ma listy favorites, zainicjuj domyślne listy
           await api.lists.initializeDefaultLists(tokens.access);
-          // Ponów próbę pobrania
           await fetchFavorites();
           return;
         }
@@ -62,36 +58,13 @@ const UserFavorites = () => {
     }
   };
 
-  const handleRemoveFromFavorites = async (itemId) => {
-    if (!window.confirm('Remove this book from favorites?')) {
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('wolfread_tokens');
-      const tokens = token ? JSON.parse(token) : null;
-      
-      if (!tokens?.access) return;
-
-      const response = await api.lists.removeBookFromList(
-        favoritesList.id,
-        itemId,
-        tokens.access
-      );
-      
-      if (response.status === 'success') {
-        // Odśwież listę
-        await fetchFavorites();
-      }
-    } catch (err) {
-      console.error('Error removing book:', err);
-      alert(api.handleError(err, 'Failed to remove book'));
-    }
+  const handleFavoriteChange = async (isFavorite) => {
+    // Odśwież listę po zmianie
+    await fetchFavorites();
   };
 
   const handleBookClick = (book) => {
     console.log('Clicked favorite book:', book);
-    // Navigation jest obsługiwana w BookCard
   };
 
   if (loading) {
@@ -127,7 +100,6 @@ const UserFavorites = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
             ❤️ Your Favorite Books
@@ -137,7 +109,6 @@ const UserFavorites = () => {
           </p>
         </div>
 
-        {/* Books grid */}
         {favoritesList?.items && favoritesList.items.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             {favoritesList.items.map((item) => (
@@ -147,17 +118,14 @@ const UserFavorites = () => {
                   onClick={handleBookClick}
                 />
                 
-                {/* Remove button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRemoveFromFavorites(item.id);
-                  }}
-                  className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg z-10 transition-colors"
-                  title="Remove from favorites"
-                >
-                  ×
-                </button>
+                {/* Serduszko do usuwania - teraz wbudowane w BookCard poprzez AddToListButton */}
+                <div className="absolute top-2 left-2 z-10">
+                  <AddToListButton 
+                    book={item.book} 
+                    compact={true}
+                    onFavoriteChange={handleFavoriteChange}
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -179,7 +147,6 @@ const UserFavorites = () => {
           </div>
         )}
 
-        {/* Statistics */}
         {favoritesList?.items && favoritesList.items.length > 0 && (
           <div className="mt-12 bg-gradient-to-r from-pink-500 to-red-600 rounded-lg p-8 text-white">
             <h3 className="text-2xl font-bold mb-4">❤️ Your Favorites Statistics</h3>
@@ -211,7 +178,6 @@ const UserFavorites = () => {
           </div>
         )}
 
-        {/* Quick actions */}
         <div className="mt-8 flex flex-wrap gap-4 justify-center">
           <Link
             to="/lists"

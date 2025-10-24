@@ -140,7 +140,6 @@ const BookCard = ({ book, onClick }) => {
     <div 
       className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 cursor-pointer overflow-hidden flex flex-col h-full relative"
     >
-      {/* Add to list button - COMPACT mode, positioned absolutely */}
       <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()}>
         <AddToListButton book={book} compact={true} />
       </div>

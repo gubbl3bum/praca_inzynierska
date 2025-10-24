@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../services/AuthContext';
 import api from '../services/api';
 
-const AddToListButton = ({ book, compact = false }) => {
+const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
   const { isAuthenticated, user } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const [lists, setLists] = useState([]);
   const [bookLists, setBookLists] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteListId, setFavoriteListId] = useState(null);
+  const [favoriteItemId, setFavoriteItemId] = useState(null);
 
   useEffect(() => {
     if (isAuthenticated && showMenu) {
@@ -16,6 +19,47 @@ const AddToListButton = ({ book, compact = false }) => {
       checkBookInLists();
     }
   }, [isAuthenticated, showMenu]);
+
+  useEffect(() => {
+    if (isAuthenticated && compact) {
+      checkIfFavorite();
+    }
+  }, [isAuthenticated, compact]);
+
+  const checkIfFavorite = async () => {
+    try {
+      const token = localStorage.getItem('wolfread_tokens');
+      const tokens = token ? JSON.parse(token) : null;
+      
+      if (!tokens?.access) return;
+
+      const response = await api.lists.checkBookInLists(book.id, tokens.access);
+      
+      if (response.status === 'success') {
+        const favList = response.in_lists?.find(list => list.list_type === 'favorites');
+        setIsFavorite(!!favList);
+        if (favList) {
+          setFavoriteListId(favList.id);
+          // Znajdź item ID dla tej książki
+          const listsResponse = await api.lists.getLists(tokens.access);
+          if (listsResponse.status === 'success') {
+            const fullFavList = listsResponse.lists?.find(l => l.id === favList.id);
+            if (fullFavList) {
+              const detailResponse = await api.lists.getListDetail(fullFavList.id, tokens.access);
+              if (detailResponse.status === 'success') {
+                const item = detailResponse.list.items?.find(i => i.book.id === book.id);
+                if (item) {
+                  setFavoriteItemId(item.id);
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking favorite status:', error);
+    }
+  };
 
   const fetchLists = async () => {
     try {
@@ -83,7 +127,7 @@ const AddToListButton = ({ book, compact = false }) => {
     }
   };
 
-  const handleQuickAddToFavorites = async (e) => {
+  const handleToggleFavorite = async (e) => {
     e.stopPropagation();
     setLoading(true);
 
@@ -98,17 +142,61 @@ const AddToListButton = ({ book, compact = false }) => {
         return;
       }
 
-      const response = await api.lists.quickAddToFavorites(book.id, tokens.access);
-      
-      if (response.status === 'success') {
-        setMessage({ type: 'success', text: '❤️ Added to favorites!' });
+      if (isFavorite) {
+        // Usuń z ulubionych
+        if (!favoriteListId || !favoriteItemId) {
+          // Spróbuj ponownie pobrać info
+          await checkIfFavorite();
+          if (!favoriteListId || !favoriteItemId) {
+            setMessage({ type: 'error', text: 'Cannot find favorite item' });
+            setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+            setLoading(false);
+            return;
+          }
+        }
+
+        const response = await api.lists.removeBookFromList(
+          favoriteListId,
+          favoriteItemId,
+          tokens.access
+        );
         
-        setTimeout(() => {
-          setMessage({ type: '', text: '' });
-        }, 2000);
+        if (response.status === 'success') {
+          setIsFavorite(false);
+          setFavoriteListId(null);
+          setFavoriteItemId(null);
+          setMessage({ type: 'success', text: '💔 Removed from favorites' });
+          
+          if (onFavoriteChange) {
+            onFavoriteChange(false);
+          }
+          
+          setTimeout(() => {
+            setMessage({ type: '', text: '' });
+          }, 2000);
+        }
+      } else {
+        // Dodaj do ulubionych
+        const response = await api.lists.quickAddToFavorites(book.id, tokens.access);
+        
+        if (response.status === 'success') {
+          setIsFavorite(true);
+          setMessage({ type: 'success', text: '❤️ Added to favorites!' });
+          
+          // Pobierz ID listy i itemu
+          await checkIfFavorite();
+          
+          if (onFavoriteChange) {
+            onFavoriteChange(true);
+          }
+          
+          setTimeout(() => {
+            setMessage({ type: '', text: '' });
+          }, 2000);
+        }
       }
     } catch (error) {
-      const errorMessage = api.handleError(error, 'Failed to add to favorites');
+      const errorMessage = api.handleError(error, 'Failed to update favorites');
       setMessage({ type: 'error', text: errorMessage });
       
       setTimeout(() => {
@@ -123,15 +211,12 @@ const AddToListButton = ({ book, compact = false }) => {
     return bookLists.some(l => l.id === listId);
   };
 
-  // POPRAWKA: Bezpieczne wyświetlanie book_count
   const getBookCount = (list) => {
-    // book_count może być liczbą lub obiektem z metadanymi
     if (typeof list.book_count === 'number') {
       return list.book_count;
     }
-    // Jeśli to obiekt, spróbuj wyciągnąć wartość
     if (typeof list.book_count === 'object' && list.book_count !== null) {
-      return 0; // Domyślnie 0 jeśli to obiekt
+      return 0;
     }
     return 0;
   };
@@ -144,12 +229,22 @@ const AddToListButton = ({ book, compact = false }) => {
     return (
       <div className="relative">
         <button
-          onClick={handleQuickAddToFavorites}
+          onClick={handleToggleFavorite}
           disabled={loading}
-          className="p-2 bg-white bg-opacity-90 hover:bg-opacity-100 rounded-full shadow-md text-gray-600 hover:text-red-500 transition-all disabled:opacity-50"
-          title="Add to favorites"
+          className={`p-2 bg-white bg-opacity-90 hover:bg-opacity-100 rounded-full shadow-md transition-all disabled:opacity-50 ${
+            isFavorite 
+              ? 'text-red-500 hover:text-red-600' 
+              : 'text-gray-400 hover:text-red-500'
+          }`}
+          title={isFavorite ? "Remove from favorites" : "Add to favorites"}
         >
-          ❤️
+          {loading ? (
+            <span className="animate-spin">⏳</span>
+          ) : (
+            <span className={`text-xl ${isFavorite ? 'animate-pulse' : ''}`}>
+              {isFavorite ? '❤️' : '🤍'}
+            </span>
+          )}
         </button>
         
         {message.text && (
