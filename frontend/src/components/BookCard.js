@@ -138,14 +138,15 @@ const BookCard = ({ book, onClick }) => {
 
   return (
     <div 
-      className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 cursor-pointer overflow-hidden flex flex-col h-full relative"
+      className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 cursor-pointer flex flex-col h-full relative"
+      style={{ overflow: 'visible' }}
     >
-      <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()}>
+      <div className="absolute top-2 left-2" style={{ zIndex: 9999 }} onClick={(e) => e.stopPropagation()}>
         <AddToListButton book={book} compact={true} />
       </div>
 
-      {/* Cover image */}
-      <div className="relative aspect-[3/4] w-full flex items-center justify-center overflow-hidden" onClick={handleClick}>
+      {/* Cover image - zachowujemy overflow-hidden tylko dla obrazka */}
+      <div className="relative aspect-[3/4] w-full flex items-center justify-center overflow-hidden rounded-t-lg" onClick={handleClick}>
         {coverUrl && !imageError ? (
           <>
             <img 

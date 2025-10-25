@@ -164,7 +164,7 @@ const BookDetails = () => {
           ← Back to previous page
         </button>
 
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-lg overflow-visible relative">
           <div className="flex flex-col lg:flex-row">
             
             <div className="lg:w-1/3 p-8">
