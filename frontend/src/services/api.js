@@ -1,20 +1,37 @@
 // API Configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
-// Generic API call function
+// Generic API call function - POPRAWIONA WERSJA
 const apiCall = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
   
+  // Prepare headers - ustawiamy Content-Type PRZED spreadowaniem options.headers
+  const headers = {};
+  
+  // Jeśli mamy body, zawsze ustawiamy Content-Type na application/json
+  if (options.body) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  // Teraz możemy dodać inne headery (ale nie nadpiszą Content-Type)
+  if (options.headers) {
+    Object.keys(options.headers).forEach(key => {
+      headers[key] = options.headers[key];
+    });
+  }
+  
   const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
     ...options,
+    headers,
   };
 
   try {
     console.log(`API call: ${url}`); // Debug
+    console.log(`Method: ${config.method || 'GET'}`); // Debug
+    console.log(`Headers:`, config.headers); // Debug
+    if (config.body) {
+      console.log(`Body:`, config.body); // Debug
+    }
     const response = await fetch(url, config);
     
     if (!response.ok) {
@@ -244,6 +261,8 @@ export const handleApiError = (error, fallbackMessage = 'Something went wrong') 
         return 'Access denied';
       case '400':
         return 'Bad request - please check your input';
+      case '415':
+        return 'Invalid request format - please try again';
       default:
         return `Error ${status} - please try again`;
     }

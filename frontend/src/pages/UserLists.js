@@ -11,12 +11,27 @@ const UserLists = () => {
   const [selectedList, setSelectedList] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Create modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newListData, setNewListData] = useState({
     name: '',
     description: '',
     is_public: false
   });
+  const [createError, setCreateError] = useState(null);
+  const [createLoading, setCreateLoading] = useState(false);
+
+  // Edit modal states
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editListData, setEditListData] = useState({
+    id: null,
+    name: '',
+    description: '',
+    is_public: false
+  });
+  const [editError, setEditError] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
     fetchLists();
@@ -72,28 +87,127 @@ const UserLists = () => {
 
   const handleCreateList = async (e) => {
     e.preventDefault();
+    setCreateError(null);
+    setCreateLoading(true);
 
     try {
+      // Walidacja
+      if (!newListData.name.trim()) {
+        setCreateError('List name is required');
+        setCreateLoading(false);
+        return;
+      }
+
       const token = localStorage.getItem('wolfread_tokens');
       const tokens = token ? JSON.parse(token) : null;
       
-      if (!tokens?.access) return;
+      if (!tokens?.access) {
+        navigate('/login');
+        return;
+      }
 
-      const response = await api.lists.createList(newListData, tokens.access);
+      const listDataToSend = {
+        name: newListData.name.trim(),
+        description: newListData.description.trim(),
+        is_public: newListData.is_public,
+        list_type: 'custom'
+      };
+
+      console.log('Creating list with data:', listDataToSend);
+
+      const response = await api.lists.createList(listDataToSend, tokens.access);
       
       if (response.status === 'success') {
         setShowCreateModal(false);
         setNewListData({ name: '', description: '', is_public: false });
+        
         await fetchLists();
+        
+        if (response.list?.id) {
+          await fetchListDetails(response.list.id);
+        }
+      } else {
+        throw new Error(response.message || 'Failed to create list');
       }
     } catch (err) {
       console.error('Error creating list:', err);
-      alert(api.handleError(err, 'Failed to create list'));
+      const errorMsg = api.handleError(err, 'Failed to create list');
+      setCreateError(errorMsg);
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  const handleOpenEditModal = (list) => {
+    setEditListData({
+      id: list.id,
+      name: list.name,
+      description: list.description || '',
+      is_public: list.is_public || false
+    });
+    setEditError(null);
+    setShowEditModal(true);
+  };
+
+  const handleEditList = async (e) => {
+    e.preventDefault();
+    setEditError(null);
+    setEditLoading(true);
+
+    try {
+      // Walidacja
+      if (!editListData.name.trim()) {
+        setEditError('List name is required');
+        setEditLoading(false);
+        return;
+      }
+
+      const token = localStorage.getItem('wolfread_tokens');
+      const tokens = token ? JSON.parse(token) : null;
+      
+      if (!tokens?.access) {
+        navigate('/login');
+        return;
+      }
+
+      const listDataToSend = {
+        name: editListData.name.trim(),
+        description: editListData.description.trim(),
+        is_public: editListData.is_public
+      };
+
+      console.log('Updating list with data:', listDataToSend);
+
+      const response = await api.lists.updateList(
+        editListData.id, 
+        listDataToSend, 
+        tokens.access
+      );
+      
+      if (response.status === 'success') {
+        setShowEditModal(false);
+        setEditListData({ id: null, name: '', description: '', is_public: false });
+        
+        await fetchLists();
+        
+        // Refresh selected list if it's the one being edited
+        if (selectedList && selectedList.id === editListData.id) {
+          await fetchListDetails(editListData.id);
+        }
+      } else {
+        throw new Error(response.message || 'Failed to update list');
+      }
+    } catch (err) {
+      console.error('Error updating list:', err);
+      const errorMsg = api.handleError(err, 'Failed to update list');
+      setEditError(errorMsg);
+    } finally {
+      setEditLoading(false);
     }
   };
 
   const handleDeleteList = async (listId) => {
-    if (!window.confirm('Are you sure you want to delete this list?')) {
+    if (!window.confirm('Are you sure you want to delete this list? This action cannot be undone.')) {
       return;
     }
 
@@ -165,6 +279,18 @@ const UserLists = () => {
     }
   };
 
+  const handleCloseCreateModal = () => {
+    setShowCreateModal(false);
+    setNewListData({ name: '', description: '', is_public: false });
+    setCreateError(null);
+  };
+
+  const handleCloseEditModal = () => {
+    setShowEditModal(false);
+    setEditListData({ id: null, name: '', description: '', is_public: false });
+    setEditError(null);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -206,9 +332,9 @@ const UserLists = () => {
                 <h2 className="font-semibold text-gray-800">Your Lists</h2>
                 <button
                   onClick={() => setShowCreateModal(true)}
-                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                  className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
                 >
-                  + New
+                  <span className="text-lg">+</span> New
                 </button>
               </div>
 
@@ -277,14 +403,34 @@ const UserLists = () => {
                     </div>
                   </div>
 
-                  {!selectedList.is_default && (
-                    <button
-                      onClick={() => handleDeleteList(selectedList.id)}
-                      className="text-red-600 hover:text-red-700 text-sm"
-                    >
-                      🗑️ Delete
-                    </button>
-                  )}
+                  {/* Action buttons */}
+                  <div className="flex gap-2">
+                    {!selectedList.is_default && (
+                      <>
+                        <button
+                          onClick={() => handleOpenEditModal(selectedList)}
+                          className="text-blue-600 hover:text-blue-700 text-sm flex items-center gap-1"
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteList(selectedList.id)}
+                          className="text-red-600 hover:text-red-700 text-sm flex items-center gap-1"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </>
+                    )}
+                    {selectedList.is_default && (
+                      <button
+                        onClick={() => handleOpenEditModal(selectedList)}
+                        className="text-blue-600 hover:text-blue-700 text-sm flex items-center gap-1"
+                        title="You can only edit description and privacy for default lists"
+                      >
+                        ✏️ Edit
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Books grid */}
@@ -334,72 +480,217 @@ const UserLists = () => {
           </div>
         </div>
 
-        {/* Create list modal */}
+        {/* CREATE LIST MODAL */}
         {showCreateModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
-              <h2 className="text-xl font-bold mb-4">Create New List</h2>
-              
-              <form onSubmit={handleCreateList}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    List Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newListData.name}
-                    onChange={(e) => setNewListData({...newListData, name: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                    placeholder="My Awesome List"
-                  />
+          <>
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50 z-40"
+              onClick={handleCloseCreateModal}
+            ></div>
+            
+            <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold">Create New List</h2>
+                  <button
+                    onClick={handleCloseCreateModal}
+                    className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                  >
+                    ×
+                  </button>
                 </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={newListData.description}
-                    onChange={(e) => setNewListData({...newListData, description: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                    rows="3"
-                    placeholder="What's this list about?"
-                  />
-                </div>
-
-                <div className="mb-6">
-                  <label className="flex items-center gap-2">
+                
+                {createError && (
+                  <div className="mb-4 bg-red-50 border border-red-200 rounded p-3 text-red-800 text-sm">
+                    {createError}
+                  </div>
+                )}
+                
+                <form onSubmit={handleCreateList}>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      List Name *
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={newListData.is_public}
-                      onChange={(e) => setNewListData({...newListData, is_public: e.target.checked})}
-                      className="rounded"
+                      type="text"
+                      required
+                      value={newListData.name}
+                      onChange={(e) => setNewListData({...newListData, name: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="My Awesome List"
+                      disabled={createLoading}
                     />
-                    <span className="text-sm text-gray-700">
-                      Make this list public (others can see it)
-                    </span>
-                  </label>
-                </div>
+                  </div>
 
-                <div className="flex justify-end gap-3">
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      value={newListData.description}
+                      onChange={(e) => setNewListData({...newListData, description: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows="3"
+                      placeholder="What's this list about?"
+                      disabled={createLoading}
+                    />
+                  </div>
+
+                  <div className="mb-6">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newListData.is_public}
+                        onChange={(e) => setNewListData({...newListData, is_public: e.target.checked})}
+                        className="rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
+                        disabled={createLoading}
+                      />
+                      <span className="text-sm text-gray-700">
+                        🌍 Make this list public (others can see it)
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={handleCloseCreateModal}
+                      className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                      disabled={createLoading}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      disabled={createLoading}
+                    >
+                      {createLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Creating...
+                        </>
+                      ) : (
+                        '✨ Create List'
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* EDIT LIST MODAL */}
+        {showEditModal && (
+          <>
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50 z-40"
+              onClick={handleCloseEditModal}
+            ></div>
+            
+            <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold">Edit List</h2>
                   <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
+                    onClick={handleCloseEditModal}
+                    className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
-                  >
-                    Create List
+                    ×
                   </button>
                 </div>
-              </form>
+                
+                {editError && (
+                  <div className="mb-4 bg-red-50 border border-red-200 rounded p-3 text-red-800 text-sm">
+                    {editError}
+                  </div>
+                )}
+
+                {selectedList?.is_default && (
+                  <div className="mb-4 bg-blue-50 border border-blue-200 rounded p-3 text-blue-800 text-sm">
+                    ℹ️ Default lists can only have their description and privacy settings edited.
+                  </div>
+                )}
+                
+                <form onSubmit={handleEditList}>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      List Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editListData.name}
+                      onChange={(e) => setEditListData({...editListData, name: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      placeholder="My Awesome List"
+                      disabled={editLoading || selectedList?.is_default}
+                    />
+                    {selectedList?.is_default && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Cannot change name of default lists
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      value={editListData.description}
+                      onChange={(e) => setEditListData({...editListData, description: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows="3"
+                      placeholder="What's this list about?"
+                      disabled={editLoading}
+                    />
+                  </div>
+
+                  <div className="mb-6">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editListData.is_public}
+                        onChange={(e) => setEditListData({...editListData, is_public: e.target.checked})}
+                        className="rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
+                        disabled={editLoading}
+                      />
+                      <span className="text-sm text-gray-700">
+                        🌍 Make this list public (others can see it)
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={handleCloseEditModal}
+                      className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                      disabled={editLoading}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      disabled={editLoading}
+                    >
+                      {editLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        '💾 Save Changes'
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
-          </div>
+          </>
         )}
 
       </div>
