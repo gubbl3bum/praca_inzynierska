@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import AddToListButton from './AddToListButton';
 
 const BookCard = ({ book, onClick }) => {
   const navigate = useNavigate();
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
 
-  // BEZPIECZNE SPRAWDZENIE BOOK OBJECT
   if (!book) {
     return (
       <div className="bg-white rounded-lg shadow-md p-4 flex flex-col h-full">
@@ -18,7 +18,6 @@ const BookCard = ({ book, onClick }) => {
     );
   }
 
-  // BEZPIECZNE WARTOŚCI Z FALLBACKAMI
   const {
     id = 'unknown',
     title = 'Unknown Title',
@@ -37,40 +36,52 @@ const BookCard = ({ book, onClick }) => {
     categories = []
   } = book;
 
-  // FORMATOWANIE DANYCH
   const displayPrice = price ? `$${price}` : null;
   const displayYear = publish_year || publication_year;
   const displayYearText = displayYear ? ` (${displayYear})` : '';
   const displayRating = average_rating ? Number(average_rating).toFixed(1) : '0.0';
   
-  // Obsługuj różne formaty autorów
+  // POPRAWKA: Bezpieczne przetwarzanie authors
   let displayAuthors = 'Unknown Author';
+  
   if (typeof authors === 'string' && authors !== 'Unknown Author') {
     displayAuthors = authors;
   } else if (Array.isArray(authors) && authors.length > 0) {
-    displayAuthors = authors.map(a => typeof a === 'string' ? a : a.name || a.full_name || 'Unknown').join(', ');
+    // Jeśli to tablica obiektów
+    displayAuthors = authors.map(a => {
+      if (typeof a === 'string') return a;
+      if (typeof a === 'object' && a !== null) {
+        return a.name || a.full_name || a.first_name + ' ' + a.last_name || 'Unknown';
+      }
+      return 'Unknown';
+    }).filter(Boolean).join(', ');
+  } else if (typeof authors === 'object' && authors !== null) {
+    // Jeśli to pojedynczy obiekt
+    displayAuthors = authors.name || authors.full_name || 
+                     (authors.first_name && authors.last_name 
+                       ? `${authors.first_name} ${authors.last_name}` 
+                       : 'Unknown Author');
   } else if (author) {
-    displayAuthors = typeof author === 'string' ? author : author.name || author.full_name || 'Unknown Author';
+    // Fallback na pole author
+    if (typeof author === 'string') {
+      displayAuthors = author;
+    } else if (typeof author === 'object' && author !== null) {
+      displayAuthors = author.name || author.full_name || 
+                      (author.first_name && author.last_name 
+                        ? `${author.first_name} ${author.last_name}` 
+                        : 'Unknown Author');
+    }
   }
 
   const shortDescription = description && description.length > 100 
     ? description.substring(0, 100) + '...' 
     : description;
 
-  // 🖼️ POPRAWIONE: Wybór najlepszej okładki z debugowaniem
   const coverUrl = cover_image_url || best_cover_medium || image_url_m;
-  
-  // Debug - pokaż jaką okładkę próbujemy załadować
-  React.useEffect(() => {
-    if (coverUrl) {
-      console.log(`📖 ${title}: Trying to load cover: ${coverUrl}`);
-    }
-  }, [coverUrl, title]);
 
-  // Renderowanie gwiazdek dla oceny 0-10
   const renderStars = (rating) => {
     const stars = [];
-    const scaledRating = rating / 2; // Konwersja z 0-10 na 0-5
+    const scaledRating = rating / 2;
     const fullStars = Math.floor(scaledRating);
     const hasHalfStar = scaledRating % 1 >= 0.5;
     
@@ -90,13 +101,11 @@ const BookCard = ({ book, onClick }) => {
     return stars;
   };
 
-  // Obsługa kliknięcia
   const handleClick = () => {
     if (onClick) {
       onClick(book);
     }
     
-    // Nawigacja do szczegółów książki
     if (id && id !== 'unknown') {
       navigate(`/book/${id}`, { 
         state: { book }
@@ -104,7 +113,6 @@ const BookCard = ({ book, onClick }) => {
     }
   };
 
-  // 🖼️ Obsługa błędów ładowania obrazka
   const handleImageError = () => {
     console.log(`❌ Failed to load cover for ${title}: ${coverUrl}`);
     setImageError(true);
@@ -117,16 +125,30 @@ const BookCard = ({ book, onClick }) => {
     setImageLoading(false);
   };
 
+  // POPRAWKA: Bezpieczne przetwarzanie categories
+  const displayCategories = Array.isArray(categories) 
+    ? categories.map(cat => {
+        if (typeof cat === 'string') return cat;
+        if (typeof cat === 'object' && cat !== null) {
+          return cat.name || 'Unknown';
+        }
+        return null;
+      }).filter(Boolean)
+    : [];
+
   return (
     <div 
-      className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 cursor-pointer overflow-hidden flex flex-col h-full"
-      onClick={handleClick}
+      className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 cursor-pointer flex flex-col h-full relative"
+      style={{ overflow: 'visible' }}
     >
-      {/* 🖼️ POPRAWIONA SEKCJA OKŁADKI */}
-      <div className="relative aspect-[3/4] w-full flex items-center justify-center overflow-hidden">
+      <div className="absolute top-2 left-2" style={{ zIndex: 9999 }} onClick={(e) => e.stopPropagation()}>
+        <AddToListButton book={book} compact={true} />
+      </div>
+
+      {/* Cover image - zachowujemy overflow-hidden tylko dla obrazka */}
+      <div className="relative aspect-[3/4] w-full flex items-center justify-center overflow-hidden rounded-t-lg" onClick={handleClick}>
         {coverUrl && !imageError ? (
           <>
-            {/* Obrazek okładki */}
             <img 
               src={coverUrl} 
               alt={`Cover of ${title}`}
@@ -140,7 +162,6 @@ const BookCard = ({ book, onClick }) => {
               }}
             />
             
-            {/* Loading placeholder podczas ładowania */}
             {imageLoading && (
               <div className="absolute inset-0 bg-gray-200 flex items-center justify-center">
                 <div className="text-gray-400 text-lg">📖</div>
@@ -148,13 +169,11 @@ const BookCard = ({ book, onClick }) => {
             )}
           </>
         ) : (
-          /* Placeholder gdy brak okładki lub błąd ładowania */
           <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-4xl">
             📚
           </div>
         )}
         
-        {/* Rating badge */}
         {average_rating > 0 && (
           <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs font-medium">
             ⭐ {displayRating}
@@ -163,7 +182,7 @@ const BookCard = ({ book, onClick }) => {
       </div>
 
       {/* Book Info */}
-      <div className="p-4 flex-1 flex flex-col">
+      <div className="p-4 flex-1 flex flex-col" onClick={handleClick}>
         <h3 className="font-semibold text-gray-800 mb-1 line-clamp-2 flex-shrink-0">
           {title}{displayYearText}
         </h3>
@@ -172,11 +191,10 @@ const BookCard = ({ book, onClick }) => {
           {displayAuthors}
         </p>
         
-        {/* Categories */}
-        {categories && categories.length > 0 && (
+        {displayCategories.length > 0 && (
           <div className="mb-2 flex-shrink-0">
             <div className="flex flex-wrap gap-1">
-              {categories.slice(0, 2).map((category, index) => (
+              {displayCategories.slice(0, 2).map((category, index) => (
                 <span 
                   key={index}
                   className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full"
@@ -184,23 +202,20 @@ const BookCard = ({ book, onClick }) => {
                   {category}
                 </span>
               ))}
-              {categories.length > 2 && (
-                <span className="text-xs text-gray-500">+{categories.length - 2}</span>
+              {displayCategories.length > 2 && (
+                <span className="text-xs text-gray-500">+{displayCategories.length - 2}</span>
               )}
             </div>
           </div>
         )}
 
-        {/* Description */}
         {shortDescription && (
           <p className="text-xs text-gray-500 mb-3 line-clamp-2 flex-1">
             {shortDescription}
           </p>
         )}
 
-        {/* Bottom info */}
         <div className="mt-auto">
-          {/* Rating */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1">
               <div className="flex text-sm">
@@ -218,7 +233,6 @@ const BookCard = ({ book, onClick }) => {
             )}
           </div>
           
-          {/* Price and additional info */}
           <div className="flex items-center justify-between text-xs">
             {displayPrice && (
               <div className="font-medium text-green-600">
@@ -232,13 +246,6 @@ const BookCard = ({ book, onClick }) => {
               </div>
             )}
           </div>
-          
-          {/* 🔍 DEBUG INFO - usuń w produkcji
-          {process.env.NODE_ENV === 'development' && coverUrl && (
-            <div className="text-xs text-gray-400 mt-1 truncate" title={coverUrl}>
-              Cover: {coverUrl.substring(0, 30)}...
-            </div>
-          )} */}
         </div>
       </div>
     </div>

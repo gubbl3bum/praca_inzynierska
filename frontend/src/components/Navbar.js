@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../services/AuthContext";
 
@@ -7,6 +7,9 @@ const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Ref dla dropdown menu
+  const dropdownRef = useRef(null);
 
   const handleLogout = async () => {
     await logout();
@@ -19,6 +22,30 @@ const Navbar = () => {
     if (searchQuery.trim()) {
       navigate(`/catalog?search=${encodeURIComponent(searchQuery)}`);
     }
+  };
+
+  // Zamknij dropdown po kliknięciu poza nim
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowUserMenu(false);
+      }
+    };
+
+    // Dodaj listener tylko gdy dropdown jest otwarty
+    if (showUserMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserMenu]);
+
+  // Zamknij dropdown po kliknięciu w link
+  const handleMenuItemClick = () => {
+    setShowUserMenu(false);
   };
 
   return (
@@ -49,7 +76,7 @@ const Navbar = () => {
         <div className="flex items-center space-x-4">
           {isAuthenticated ? (
             // Logged in user
-            <div className="relative">
+            <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 transition-colors"
@@ -65,7 +92,7 @@ const Navbar = () => {
 
               {/* Dropdown menu */}
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 border border-gray-200">
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 border border-gray-200 z-50">
                   <div className="px-4 py-2 text-sm text-gray-700 border-b border-gray-100">
                     <div className="font-medium">{user?.full_name || user?.username}</div>
                     <div className="text-gray-500 text-xs">{user?.email}</div>
@@ -74,7 +101,7 @@ const Navbar = () => {
                   <Link
                     to="/profile"
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    onClick={() => setShowUserMenu(false)}
+                    onClick={handleMenuItemClick}
                   >
                     👤 My Profile
                   </Link>
@@ -82,7 +109,7 @@ const Navbar = () => {
                   <Link
                     to="/user-favorites"
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    onClick={() => setShowUserMenu(false)}
+                    onClick={handleMenuItemClick}
                   >
                     ❤️ Favorites
                   </Link>
@@ -90,9 +117,17 @@ const Navbar = () => {
                   <Link
                     to="/reviews"
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    onClick={() => setShowUserMenu(false)}
+                    onClick={handleMenuItemClick}
                   >
                     ⭐ My Reviews
+                  </Link>
+
+                  <Link
+                    to="/lists"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    onClick={handleMenuItemClick}
+                  >
+                    📚 My Lists
                   </Link>
                   
                   <div className="border-t border-gray-100 mt-1">
@@ -164,14 +199,6 @@ const Navbar = () => {
           </button>
         </form>
       </div>
-
-      {/* Overlay for closing dropdown */}
-      {showUserMenu && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowUserMenu(false)}
-        ></div>
-      )}
     </nav>
   );
 };

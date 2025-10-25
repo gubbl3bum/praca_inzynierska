@@ -3,7 +3,8 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from .models import (
     Book, Author, Publisher, Category, BookAuthor, BookCategory,
-    User, UserPreferences, BookReview, RefreshToken
+    User, UserPreferences, BookReview, RefreshToken,
+    BookList, BookListItem, ReadingProgress
 )
 
 class AuthorSerializer(serializers.ModelSerializer):
@@ -521,3 +522,121 @@ class BookRecommendationSerializer(serializers.ModelSerializer):
     def get_best_cover_medium(self, obj):
         """Return best available medium cover"""
         return obj.cover_image_url
+    
+# =============================================================================
+# BOOK LIST SERIALIZERS
+# =============================================================================
+
+class BookListItemSerializer(serializers.ModelSerializer):
+    """Book list item with book details"""
+    book = BookListSerializer(read_only=True)
+    book_id = serializers.IntegerField(write_only=True)
+    
+    class Meta:
+        model = BookListItem
+        fields = [
+            'id', 'book', 'book_id', 'notes', 'priority',
+            'added_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'added_at', 'updated_at']
+
+class BookListDetailSerializer(serializers.ModelSerializer):
+    """Detailed book list with items"""
+    items = BookListItemSerializer(many=True, read_only=True)
+    book_count = serializers.ReadOnlyField()
+    user_username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = BookList
+        fields = [
+            'id', 'name', 'list_type', 'description', 'is_public', 
+            'is_default', 'book_count', 'user_username',
+            'items', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'is_default', 'created_at', 'updated_at']
+
+class BookListSimpleSerializer(serializers.ModelSerializer):
+    """Simple book list without items"""
+    book_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = BookList
+        fields = [
+            'id', 'name', 'list_type', 'description', 'is_public',
+            'is_default', 'book_count', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'is_default', 'created_at', 'updated_at']
+    
+    def get_book_count(self, obj):
+        """Get book count for the list"""
+        count = obj.items.count()
+        return int(count)  
+
+
+class BookListDetailSerializer(serializers.ModelSerializer):
+    """Detailed book list with items"""
+    items = BookListItemSerializer(many=True, read_only=True)
+    book_count = serializers.SerializerMethodField()  # Zmień na SerializerMethodField
+    user_username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = BookList
+        fields = [
+            'id', 'name', 'list_type', 'description', 'is_public', 
+            'is_default', 'book_count', 'user_username',
+            'items', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'is_default', 'created_at', 'updated_at']
+    
+    def get_book_count(self, obj):
+        """Get book count for the list"""
+        return obj.items.count()
+
+class BookListCreateUpdateSerializer(serializers.ModelSerializer):
+    """Create/update book list"""
+    
+    class Meta:
+        model = BookList
+        fields = ['name', 'list_type', 'description', 'is_public']
+    
+    def validate_list_type(self, value):
+        """Prevent creating custom lists with reserved types"""
+        if value in ['favorites', 'to_read', 'reading', 'read']:
+            # Check if this is an update of existing default list
+            if not self.instance or not self.instance.is_default:
+                raise serializers.ValidationError(
+                    "Cannot create custom list with reserved type. Use 'custom' instead."
+                )
+        return value
+
+class ReadingProgressSerializer(serializers.ModelSerializer):
+    """Reading progress serializer"""
+    book = BookListSerializer(read_only=True)
+    book_id = serializers.IntegerField(write_only=True)
+    
+    class Meta:
+        model = ReadingProgress
+        fields = [
+            'id', 'book', 'book_id', 'status', 'progress_percentage',
+            'current_page', 'total_pages', 'started_at', 'finished_at',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def validate_progress_percentage(self, value):
+        """Validate progress percentage"""
+        if value < 0 or value > 100:
+            raise serializers.ValidationError("Progress must be between 0 and 100")
+        return value
+
+class AddToListSerializer(serializers.Serializer):
+    """Add book to list"""
+    book_id = serializers.IntegerField()
+    notes = serializers.CharField(required=False, allow_blank=True)
+    priority = serializers.IntegerField(required=False, default=0)
+    
+    def validate_book_id(self, value):
+        """Check if book exists"""
+        if not Book.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Book not found")
+        return value

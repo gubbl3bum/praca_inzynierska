@@ -382,3 +382,146 @@ class RefreshToken(models.Model):
         )
         
         return refresh_token
+    
+class BookList(models.Model):
+    """
+    Custom user book list
+    """
+    LIST_TYPES = [
+        ('favorites', 'Favorites'),
+        ('to_read', 'To Read'),
+        ('reading', 'Currently Reading'),
+        ('read', 'Already Read'),
+        ('custom', 'Custom List')
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='book_lists')
+    name = models.CharField(max_length=200)
+    list_type = models.CharField(max_length=20, choices=LIST_TYPES, default='custom')
+    description = models.TextField(blank=True, null=True)
+    is_public = models.BooleanField(default=False)
+    is_default = models.BooleanField(default=False)  # For system lists like favorites, to_read
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'book_lists'
+        unique_together = ['user', 'name']
+        indexes = [
+            models.Index(fields=['user', 'list_type']),
+            models.Index(fields=['is_public']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.name}"
+    
+    def get_book_count(self):
+        """Get number of books in list - zwykła metoda zamiast property"""
+        return self.items.count()
+    
+    @classmethod
+    def get_or_create_default_lists(cls, user):
+        """Create default lists for user if they don't exist"""
+        default_lists = [
+            {'name': 'Favorites', 'list_type': 'favorites', 'is_default': True},
+            {'name': 'To Read', 'list_type': 'to_read', 'is_default': True},
+            {'name': 'Currently Reading', 'list_type': 'reading', 'is_default': True},
+            {'name': 'Already Read', 'list_type': 'read', 'is_default': True},
+        ]
+        
+        created_lists = []
+        for list_data in default_lists:
+            book_list, created = cls.objects.get_or_create(
+                user=user,
+                list_type=list_data['list_type'],
+                defaults=list_data
+            )
+            created_lists.append(book_list)
+        
+        return created_lists
+    
+class BookListItem(models.Model):
+    """
+    Item in a book list
+    """
+    book_list = models.ForeignKey(BookList, on_delete=models.CASCADE, related_name='items')
+    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name='list_items')
+    
+    # Optional fields
+    notes = models.TextField(blank=True, null=True)
+    priority = models.IntegerField(default=0)  # For sorting
+    
+    added_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'book_list_items'
+        unique_together = ['book_list', 'book']
+        indexes = [
+            models.Index(fields=['book_list', 'added_at']),
+            models.Index(fields=['book_list', 'priority']),
+        ]
+    
+    def __str__(self):
+        return f"{self.book.title} in {self.book_list.name}"
+
+class ReadingProgress(models.Model):
+    """
+    Track reading progress for books
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reading_progress')
+    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name='reading_progress')
+    
+    STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('reading', 'Reading'),
+        ('finished', 'Finished'),
+        ('paused', 'Paused'),
+        ('abandoned', 'Abandoned')
+    ]
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
+    progress_percentage = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    current_page = models.IntegerField(blank=True, null=True)
+    total_pages = models.IntegerField(blank=True, null=True)
+    
+    started_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'reading_progress'
+        unique_together = ['user', 'book']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['status']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.book.title} ({self.progress_percentage}%)"
+    
+    def update_progress(self, percentage=None, page=None, total=None):
+        """Update reading progress"""
+        if percentage is not None:
+            self.progress_percentage = min(100, max(0, percentage))
+        elif page is not None and total is not None:
+            self.current_page = page
+            self.total_pages = total
+            self.progress_percentage = int((page / total) * 100) if total > 0 else 0
+        
+        # Auto-update status
+        if self.progress_percentage == 0 and self.status == 'not_started':
+            pass
+        elif self.progress_percentage > 0 and self.progress_percentage < 100:
+            if self.status == 'not_started':
+                self.status = 'reading'
+                self.started_at = timezone.now()
+        elif self.progress_percentage == 100:
+            self.status = 'finished'
+            if not self.finished_at:
+                self.finished_at = timezone.now()
+        
+        self.save()

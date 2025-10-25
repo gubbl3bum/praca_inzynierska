@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import SimilarBooks from '../components/SimilarBooks';
+import AddToListButton from '../components/AddToListButton';
 
 const BookDetails = () => {
   const { id } = useParams();
@@ -18,7 +19,6 @@ const BookDetails = () => {
         setLoading(true);
         setError(null);
         
-        // Jeśli mamy dane książki w state (przekazane z BookCard), użyj ich
         if (location.state?.book) {
           console.log('Using book data from navigation state:', location.state.book);
           const normalizedBook = api.data.normalizeBook(location.state.book);
@@ -27,7 +27,6 @@ const BookDetails = () => {
           return;
         }
         
-        // W przeciwnym razie pobierz z API
         console.log('Fetching book details from API for ID:', id);
         const response = await api.books.getBook(id);
         
@@ -52,25 +51,20 @@ const BookDetails = () => {
     }
   }, [id, location.state]);
 
-  // Funkcja do renderowania gwiazdek dla skali 0-10
   const renderStars = (rating) => {
     const stars = [];
-    // Konwertuj ocenę 0-10 na skalę 0-5 gwiazdek
     const scaledRating = rating / 2;
     const fullStars = Math.floor(scaledRating);
     const hasHalfStar = scaledRating % 1 >= 0.5;
     
-    // Pełne gwiazdki
     for (let i = 0; i < fullStars; i++) {
       stars.push(<span key={i} className="text-yellow-400 text-xl">★</span>);
     }
     
-    // Półgwiazdka
     if (hasHalfStar) {
       stars.push(<span key="half" className="text-yellow-400 text-xl">☆</span>);
     }
     
-    // Puste gwiazdki
     const remainingStars = 5 - Math.ceil(scaledRating);
     for (let i = 0; i < remainingStars; i++) {
       stars.push(<span key={`empty-${i}`} className="text-gray-300 text-xl">☆</span>);
@@ -79,7 +73,6 @@ const BookDetails = () => {
     return stars;
   };
 
-  // Funkcja do pobierania najlepszej okładki
   const getBestCoverUrl = (book) => {
     return book?.best_cover_large || 
            book?.image_url_l || 
@@ -89,7 +82,6 @@ const BookDetails = () => {
            null;
   };
 
-  // Format authors display
   const getAuthorsDisplay = (book) => {
     if (!book) return 'Unknown Author';
     
@@ -165,7 +157,6 @@ const BookDetails = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto p-8">
         
-        {/* Back button */}
         <button
           onClick={() => navigate(-1)}
           className="mb-6 flex items-center gap-2 text-blue-600 hover:text-blue-800 transition-colors"
@@ -173,11 +164,9 @@ const BookDetails = () => {
           ← Back to previous page
         </button>
 
-        {/* Main content */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-lg overflow-visible relative">
           <div className="flex flex-col lg:flex-row">
             
-            {/* Book cover */}
             <div className="lg:w-1/3 p-8">
               <div className="aspect-[3/4] w-full max-w-md mx-auto bg-gray-200 rounded-lg overflow-hidden shadow-md">
                 {coverUrl ? (
@@ -200,10 +189,8 @@ const BookDetails = () => {
               </div>
             </div>
 
-            {/* Book information */}
             <div className="lg:w-2/3 p-8">
               
-              {/* Title and author */}
               <h1 className="text-4xl font-bold text-gray-800 mb-2">
                 {book.title}
               </h1>
@@ -212,7 +199,6 @@ const BookDetails = () => {
                 by {authorsDisplay}
               </p>
 
-              {/* Rating section */}
               <div className="mb-6">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="flex gap-1">
@@ -228,7 +214,6 @@ const BookDetails = () => {
                   )}
                 </div>
                 
-                {/* Rating bar visualization */}
                 <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                   <div 
                     className="bg-gradient-to-r from-yellow-400 to-orange-500 h-2 rounded-full transition-all duration-300"
@@ -237,7 +222,6 @@ const BookDetails = () => {
                 </div>
               </div>
 
-              {/* Categories */}
               {book.categories && book.categories.length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-gray-800 mb-2">Categories:</h3>
@@ -254,7 +238,6 @@ const BookDetails = () => {
                 </div>
               )}
 
-              {/* Publication info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 {book.publish_year && (
                   <div>
@@ -289,7 +272,6 @@ const BookDetails = () => {
                 )}
               </div>
 
-              {/* Keywords */}
               {book.keywords && (
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 mb-2">Keywords:</h3>
@@ -297,7 +279,6 @@ const BookDetails = () => {
                 </div>
               )}
 
-              {/* Description */}
               {book.description && (
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 mb-2">Description:</h3>
@@ -307,23 +288,19 @@ const BookDetails = () => {
                 </div>
               )}
 
-              {/* Action buttons */}
+              {/* Action buttons - TYLKO JEDEN ZESTAW */}
               <div className="flex flex-wrap gap-3">
-                <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors">
-                  Add to Reading List
-                </button>
+                <AddToListButton book={book} />
+                
                 <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-colors">
                   Mark as Read
                 </button>
-                <button className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg transition-colors">
-                  Add to Favorites
-                </button>
+                
                 <button className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors">
                   Write Review
                 </button>
               </div>
 
-              {/* Book metadata */}
               {(book.created_at || book.updated_at) && (
                 <div className="mt-6 pt-6 border-t border-gray-200">
                   <h3 className="text-lg font-semibold text-gray-800 mb-2">Book Information:</h3>
@@ -341,7 +318,6 @@ const BookDetails = () => {
           </div>
         </div>
 
-        {/* Additional sections */}
         <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Reviews & Ratings</h2>
           <div className="text-center py-8 text-gray-500">
@@ -358,26 +334,8 @@ const BookDetails = () => {
           </div>
         </div>
 
-        {/* Similar Books section */}
         <div className="mt-8">
           <SimilarBooks bookId={book.id}/>
-        </div>
-
-        {/* Reviews section remains the same */}
-        <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Reviews & Ratings</h2>
-          <div className="text-center py-8 text-gray-500">
-            <div className="text-4xl mb-2">⭐</div>
-            <p className="mb-4">
-              {ratingsCount > 0 
-                ? `This book has ${ratingsCount} review${ratingsCount !== 1 ? 's' : ''} with an average rating of ${rating.toFixed(1)}/10`
-                : 'No reviews yet. Be the first to review this book!'
-              }
-            </p>
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
-              Write a Review
-            </button>
-          </div>
         </div>
 
       </div>
