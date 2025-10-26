@@ -1,7 +1,8 @@
+import reviewsApi from './reviewsApi';
 // API Configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
-// Generic API call function - POPRAWIONA WERSJA
+// Generic API call function
 const apiCall = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
   
@@ -581,6 +582,7 @@ const api = {
   data: dataUtils,
   handleError: handleApiError,
   lists: listsAPI, 
+  reviews: reviewsApi,
 };
 
 export default api;

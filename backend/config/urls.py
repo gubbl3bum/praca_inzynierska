@@ -395,4 +395,7 @@ urlpatterns = [
 
     # BOOK LISTS API
     path('api/lists/', include('ml_api.urls_lists')),
+
+    # REVIEWS
+    path('api/reviews/', include('ml_api.urls_reviews')),
 ]

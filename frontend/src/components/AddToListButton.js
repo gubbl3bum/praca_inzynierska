@@ -1,6 +1,8 @@
+// frontend/src/components/AddToListButton.js
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../services/AuthContext';
 import api from '../services/api';
+import CreateListModal from './CreateListModal';
 
 const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
   const { isAuthenticated, user } = useAuth();
@@ -12,6 +14,7 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteListId, setFavoriteListId] = useState(null);
   const [favoriteItemId, setFavoriteItemId] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated && showMenu) {
@@ -40,7 +43,6 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
         setIsFavorite(!!favList);
         if (favList) {
           setFavoriteListId(favList.id);
-          // Znajdź item ID dla tej książki
           const listsResponse = await api.lists.getLists(tokens.access);
           if (listsResponse.status === 'success') {
             const fullFavList = listsResponse.lists?.find(l => l.id === favList.id);
@@ -143,9 +145,7 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
       }
 
       if (isFavorite) {
-        // Usuń z ulubionych
         if (!favoriteListId || !favoriteItemId) {
-          // Spróbuj ponownie pobrać info
           await checkIfFavorite();
           if (!favoriteListId || !favoriteItemId) {
             setMessage({ type: 'error', text: 'Cannot find favorite item' });
@@ -176,14 +176,12 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
           }, 2000);
         }
       } else {
-        // Dodaj do ulubionych
         const response = await api.lists.quickAddToFavorites(book.id, tokens.access);
         
         if (response.status === 'success') {
           setIsFavorite(true);
           setMessage({ type: 'success', text: '❤️ Added to favorites!' });
           
-          // Pobierz ID listy i itemu
           await checkIfFavorite();
           
           if (onFavoriteChange) {
@@ -204,6 +202,14 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
       }, 3000);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateListSuccess = async (newList) => {
+    await fetchLists();
+    
+    if (newList?.id) {
+      await handleAddToList(newList.id);
     }
   };
 
@@ -354,7 +360,8 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
             <div className="px-4 py-3 border-t border-gray-200">
               <button
                 onClick={() => {
-                  alert('Create list feature coming soon!');
+                  setShowMenu(false);
+                  setShowCreateModal(true);
                 }}
                 className="w-full text-blue-600 hover:text-blue-700 text-sm font-medium"
               >
@@ -364,6 +371,12 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
           </div>
         </>
       )}
+
+      <CreateListModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={handleCreateListSuccess}
+      />
     </div>
   );
 };

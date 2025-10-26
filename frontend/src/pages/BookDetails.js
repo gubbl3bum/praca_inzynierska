@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import SimilarBooks from '../components/SimilarBooks';
 import AddToListButton from '../components/AddToListButton';
+import ReviewList from '../components/ReviewList'; 
 
 const BookDetails = () => {
   const { id } = useParams();
@@ -164,6 +165,7 @@ const BookDetails = () => {
           ← Back to previous page
         </button>
 
+        {/* BOOK INFO SECTION */}
         <div className="bg-white rounded-2xl shadow-lg overflow-visible relative">
           <div className="flex flex-col lg:flex-row">
             
@@ -288,7 +290,7 @@ const BookDetails = () => {
                 </div>
               )}
 
-              {/* Action buttons - TYLKO JEDEN ZESTAW */}
+              {/* Action buttons */}
               <div className="flex flex-wrap gap-3">
                 <AddToListButton book={book} />
                 
@@ -296,7 +298,15 @@ const BookDetails = () => {
                   Mark as Read
                 </button>
                 
-                <button className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors">
+                <button 
+                  onClick={() => {
+                    const reviewSection = document.getElementById('reviews-section');
+                    if (reviewSection) {
+                      reviewSection.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors"
+                >
                   Write Review
                 </button>
               </div>
@@ -318,22 +328,13 @@ const BookDetails = () => {
           </div>
         </div>
 
-        <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Reviews & Ratings</h2>
-          <div className="text-center py-8 text-gray-500">
-            <div className="text-4xl mb-2">⭐</div>
-            <p className="mb-4">
-              {ratingsCount > 0 
-                ? `This book has ${ratingsCount} review${ratingsCount !== 1 ? 's' : ''} with an average rating of ${rating.toFixed(1)}/10`
-                : 'No reviews yet. Be the first to review this book!'
-              }
-            </p>
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
-              Write a Review
-            </button>
-          </div>
+        {/* REVIEWS */}
+        <div id="reviews-section" className="mt-8 bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">Reviews & Ratings</h2>
+          <ReviewList bookId={book.id} />
         </div>
 
+        {/* SIMILAR BOOKS */}
         <div className="mt-8">
           <SimilarBooks bookId={book.id}/>
         </div>
