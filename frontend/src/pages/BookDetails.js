@@ -3,7 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import SimilarBooks from '../components/SimilarBooks';
 import AddToListButton from '../components/AddToListButton';
-import ReviewList from '../components/ReviewList'; // ⭐ NOWY IMPORT
+import ReviewList from '../components/ReviewList'; 
 
 const BookDetails = () => {
   const { id } = useParams();
@@ -165,7 +165,7 @@ const BookDetails = () => {
           ← Back to previous page
         </button>
 
-        {/* BOOK INFO SECTION - bez zmian */}
+        {/* BOOK INFO SECTION */}
         <div className="bg-white rounded-2xl shadow-lg overflow-visible relative">
           <div className="flex flex-col lg:flex-row">
             
@@ -300,7 +300,6 @@ const BookDetails = () => {
                 
                 <button 
                   onClick={() => {
-                    // Scroll do sekcji reviews
                     const reviewSection = document.getElementById('reviews-section');
                     if (reviewSection) {
                       reviewSection.scrollIntoView({ behavior: 'smooth' });
@@ -329,13 +328,13 @@ const BookDetails = () => {
           </div>
         </div>
 
-        {/* ⭐ NOWA SEKCJA - REVIEWS */}
+        {/* REVIEWS */}
         <div id="reviews-section" className="mt-8 bg-white rounded-xl shadow-lg p-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Reviews & Ratings</h2>
           <ReviewList bookId={book.id} />
         </div>
 
-        {/* SIMILAR BOOKS - bez zmian */}
+        {/* SIMILAR BOOKS */}
         <div className="mt-8">
           <SimilarBooks bookId={book.id}/>
         </div>

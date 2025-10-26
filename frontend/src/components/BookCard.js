@@ -41,13 +41,11 @@ const BookCard = ({ book, onClick }) => {
   const displayYearText = displayYear ? ` (${displayYear})` : '';
   const displayRating = average_rating ? Number(average_rating).toFixed(1) : '0.0';
   
-  // POPRAWKA: Bezpieczne przetwarzanie authors
   let displayAuthors = 'Unknown Author';
   
   if (typeof authors === 'string' && authors !== 'Unknown Author') {
     displayAuthors = authors;
   } else if (Array.isArray(authors) && authors.length > 0) {
-    // Jeśli to tablica obiektów
     displayAuthors = authors.map(a => {
       if (typeof a === 'string') return a;
       if (typeof a === 'object' && a !== null) {
@@ -56,13 +54,11 @@ const BookCard = ({ book, onClick }) => {
       return 'Unknown';
     }).filter(Boolean).join(', ');
   } else if (typeof authors === 'object' && authors !== null) {
-    // Jeśli to pojedynczy obiekt
     displayAuthors = authors.name || authors.full_name || 
                      (authors.first_name && authors.last_name 
                        ? `${authors.first_name} ${authors.last_name}` 
                        : 'Unknown Author');
   } else if (author) {
-    // Fallback na pole author
     if (typeof author === 'string') {
       displayAuthors = author;
     } else if (typeof author === 'object' && author !== null) {
@@ -125,7 +121,6 @@ const BookCard = ({ book, onClick }) => {
     setImageLoading(false);
   };
 
-  // POPRAWKA: Bezpieczne przetwarzanie categories
   const displayCategories = Array.isArray(categories) 
     ? categories.map(cat => {
         if (typeof cat === 'string') return cat;
@@ -145,7 +140,7 @@ const BookCard = ({ book, onClick }) => {
         <AddToListButton book={book} compact={true} />
       </div>
 
-      {/* Cover image - zachowujemy overflow-hidden tylko dla obrazka */}
+      {/* Cover image - overflow-hidden only for cover */}
       <div className="relative aspect-[3/4] w-full flex items-center justify-center overflow-hidden rounded-t-lg" onClick={handleClick}>
         {coverUrl && !imageError ? (
           <>
