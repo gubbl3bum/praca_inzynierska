@@ -8,6 +8,7 @@ from django.utils import timezone
 import uuid
 from datetime import timedelta
 import json
+from django.contrib.auth import get_user_model
 
 class Author(models.Model):
     first_name = models.CharField(max_length=200, blank=True)
@@ -525,3 +526,252 @@ class ReadingProgress(models.Model):
                 self.finished_at = timezone.now()
         
         self.save()
+
+User = get_user_model()
+
+class Badge(models.Model):
+    """
+    Badge definition - types of badges available in the system
+    """
+    CATEGORY_CHOICES = [
+        ('reviews', 'Reviews'),
+        ('reading', 'Reading'),
+        ('collections', 'Collections'),
+        ('discovery', 'Discovery'),
+        ('social', 'Social'),
+        ('time', 'Time-based'),
+        ('special', 'Special'),
+    ]
+    
+    RARITY_CHOICES = [
+        ('common', 'Common'),
+        ('rare', 'Rare'),
+        ('epic', 'Epic'),
+        ('legendary', 'Legendary'),
+    ]
+    
+    # Basic info
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    description = models.TextField()
+    icon = models.CharField(max_length=10)  # Emoji icon
+    
+    # Classification
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    rarity = models.CharField(max_length=20, choices=RARITY_CHOICES, default='common')
+    
+    # Requirements
+    requirement_type = models.CharField(max_length=50)  # e.g., 'review_count', 'books_read'
+    requirement_value = models.IntegerField()  # Target value
+    requirement_condition = models.JSONField(default=dict, blank=True)  # Additional conditions
+    
+    # Metadata
+    points = models.IntegerField(default=10)  # Points awarded for earning badge
+    is_active = models.BooleanField(default=True)
+    is_hidden = models.BooleanField(default=False)  # Secret badges
+    order = models.IntegerField(default=0)  # Display order
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'badges'
+        ordering = ['category', 'order', 'points']
+        indexes = [
+            models.Index(fields=['category', 'is_active']),
+            models.Index(fields=['requirement_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.icon} {self.name}"
+    
+    def get_rarity_color(self):
+        """Get color class for rarity"""
+        colors = {
+            'common': 'gray',
+            'rare': 'blue',
+            'epic': 'purple',
+            'legendary': 'yellow'
+        }
+        return colors.get(self.rarity, 'gray')
+
+
+class UserBadge(models.Model):
+    """
+    User earned badges - many-to-many relationship with timestamp
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='earned_badges')
+    badge = models.ForeignKey(Badge, on_delete=models.CASCADE, related_name='users_earned')
+    
+    # Progress tracking
+    earned_at = models.DateTimeField(auto_now_add=True)
+    progress = models.IntegerField(default=0)  # Current progress towards badge
+    completed = models.BooleanField(default=False)
+    
+    # Display settings
+    is_showcased = models.BooleanField(default=False)  # Show on profile
+    notification_sent = models.BooleanField(default=False)
+    
+    class Meta:
+        db_table = 'user_badges'
+        unique_together = ['user', 'badge']
+        ordering = ['-earned_at']
+        indexes = [
+            models.Index(fields=['user', 'completed']),
+            models.Index(fields=['earned_at']),
+        ]
+    
+    def __str__(self):
+        status = "✅" if self.completed else f"{self.progress}/{self.badge.requirement_value}"
+        return f"{self.user.username} - {self.badge.name} ({status})"
+    
+    @property
+    def progress_percentage(self):
+        """Calculate progress percentage"""
+        if self.badge.requirement_value == 0:
+            return 100 if self.completed else 0
+        return min(100, (self.progress / self.badge.requirement_value) * 100)
+
+
+class UserStatistics(models.Model):
+    """
+    Cache user statistics for performance and badge checking
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='statistics')
+    
+    # Reviews statistics
+    total_reviews = models.IntegerField(default=0)
+    reviews_with_text = models.IntegerField(default=0)
+    average_review_length = models.IntegerField(default=0)
+    perfect_ratings = models.IntegerField(default=0)  # 10/10 ratings
+    harsh_ratings = models.IntegerField(default=0)  # 1-3/10 ratings
+    
+    # Reading statistics
+    books_read = models.IntegerField(default=0)
+    books_reading = models.IntegerField(default=0)
+    books_to_read = models.IntegerField(default=0)
+    total_books_in_lists = models.IntegerField(default=0)
+    
+    # Collection statistics
+    favorite_books = models.IntegerField(default=0)
+    custom_lists_created = models.IntegerField(default=0)
+    
+    # Discovery statistics
+    unique_categories_read = models.IntegerField(default=0)
+    categories_explored = models.JSONField(default=list)  # List of category IDs
+    
+    # Streaks
+    current_reading_streak = models.IntegerField(default=0)
+    longest_reading_streak = models.IntegerField(default=0)
+    last_activity_date = models.DateField(null=True, blank=True)
+    
+    # Achievements
+    total_badges_earned = models.IntegerField(default=0)
+    total_points = models.IntegerField(default=0)
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'user_statistics'
+    
+    def __str__(self):
+        return f"{self.user.username} Stats"
+    
+    def update_streak(self):
+        """Update reading streak"""
+        today = timezone.now().date()
+        
+        if self.last_activity_date:
+            days_diff = (today - self.last_activity_date).days
+            
+            if days_diff == 1:
+                # Consecutive day
+                self.current_reading_streak += 1
+                if self.current_reading_streak > self.longest_reading_streak:
+                    self.longest_reading_streak = self.current_reading_streak
+            elif days_diff > 1:
+                # Streak broken
+                self.current_reading_streak = 1
+            # If days_diff == 0, same day, don't update
+        else:
+            # First activity
+            self.current_reading_streak = 1
+            self.longest_reading_streak = 1
+        
+        self.last_activity_date = today
+        self.save()
+
+
+class Achievement(models.Model):
+    """
+    Achievement/milestone tracking - different from badges
+    These are one-time accomplishments
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='achievements')
+    
+    ACHIEVEMENT_TYPES = [
+        ('first_review', 'First Review'),
+        ('first_book_read', 'First Book Read'),
+        ('joined', 'Account Created'),
+        ('profile_complete', 'Profile Completed'),
+        ('social_share', 'Shared on Social Media'),
+    ]
+    
+    achievement_type = models.CharField(max_length=50, choices=ACHIEVEMENT_TYPES)
+    description = models.TextField()
+    
+    achieved_at = models.DateTimeField(auto_now_add=True)
+    metadata = models.JSONField(default=dict, blank=True)  # Additional data
+    
+    class Meta:
+        db_table = 'achievements'
+        unique_together = ['user', 'achievement_type']
+        ordering = ['-achieved_at']
+        indexes = [
+            models.Index(fields=['user', 'achievement_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.get_achievement_type_display()}"
+
+
+class Leaderboard(models.Model):
+    """
+    Leaderboard rankings - cached for performance
+    """
+    PERIOD_CHOICES = [
+        ('all_time', 'All Time'),
+        ('yearly', 'This Year'),
+        ('monthly', 'This Month'),
+        ('weekly', 'This Week'),
+    ]
+    
+    CATEGORY_CHOICES = [
+        ('points', 'Total Points'),
+        ('badges', 'Badges Earned'),
+        ('reviews', 'Reviews Written'),
+        ('books_read', 'Books Read'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='leaderboard_entries')
+    period = models.CharField(max_length=20, choices=PERIOD_CHOICES)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    
+    rank = models.IntegerField()
+    score = models.IntegerField()
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'leaderboard'
+        unique_together = ['user', 'period', 'category']
+        ordering = ['period', 'category', 'rank']
+        indexes = [
+            models.Index(fields=['period', 'category', 'rank']),
+        ]
+    
+    def __str__(self):
+        return f"#{self.rank} {self.user.username} - {self.category} ({self.period})"
