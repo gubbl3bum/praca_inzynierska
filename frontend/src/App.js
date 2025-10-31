@@ -14,6 +14,7 @@ import BookDetails from "./pages/BookDetails";
 import UserFavourites from "./pages/UserFavourites";
 import UserReviews from "./pages/UserReviews";
 import UserLists from "./pages/UserLists";
+import Badges from './pages/Badges';
 
 // Auth pages
 import LoginForm from "./components/auth/LoginForm";
@@ -101,6 +102,15 @@ function App() {
                     </a>
                   </div>
                 </div>
+              } 
+            />
+
+            <Route 
+              path="/badges" 
+              element={
+                <ProtectedRoute requireAuth={true}>
+                  <Badges />
+                </ProtectedRoute>
               } 
             />
           </Routes>
