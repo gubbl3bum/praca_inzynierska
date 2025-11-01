@@ -40,37 +40,37 @@ const UserProfile = () => {
     }
   }, [user]);
 
-  const fetchUserStatistics = async () => {
-    try {
-      setStatsLoading(true);
-      const token = localStorage.getItem('wolfread_tokens');
-      const tokens = token ? JSON.parse(token) : null;
-      
-      if (!tokens?.access) return;
+const fetchUserStatistics = async () => {
+  try {
+    setStatsLoading(true);
+    const token = localStorage.getItem('wolfread_tokens');
+    const tokens = token ? JSON.parse(token) : null;
+    
+    if (!tokens?.access) return;
 
-      // Fetch from gamification API
-      const gamificationStats = await api.gamification.getStatistics(tokens.access);
-      
-      // Fetch review stats
-      const reviewStats = await api.reviews.getUserReviews(tokens.access, { page_size: 1 });
-      
-      // Fetch lists
-      const listsResponse = await api.lists.getLists(tokens.access);
-      
-      setStatistics({
-        totalPoints: gamificationStats.statistics?.total_points || 0,
-        badgesEarned: gamificationStats.statistics?.badges_earned || 0,
-        booksRead: gamificationStats.statistics?.books_read || 0,
-        totalReviews: reviewStats.user_statistics?.total_reviews || 0,
-        averageRating: reviewStats.user_statistics?.average_rating || 0,
-        totalLists: listsResponse.lists?.length || 0,
-      });
-    } catch (error) {
-      console.error('Error fetching statistics:', error);
-    } finally {
-      setStatsLoading(false);
-    }
-  };
+    // Fetch from gamification API
+    const gamificationStats = await api.gamification.getStatistics(tokens.access);
+    
+    // Fetch review stats
+    const reviewStats = await api.reviews.getUserReviews(tokens.access, { page_size: 1 });
+    
+    // Fetch lists
+    const listsResponse = await api.lists.getLists(tokens.access);
+    
+    setStatistics({
+      totalPoints: gamificationStats.statistics?.total_points || 0,
+      badgesEarned: gamificationStats.statistics?.total_badges_earned || 0,  // POPRAWKA: zmienione z badges_earned
+      booksRead: gamificationStats.statistics?.books_read || 0,
+      totalReviews: reviewStats.user_statistics?.total_reviews || 0,
+      averageRating: reviewStats.user_statistics?.average_rating || 0,
+      totalLists: listsResponse.lists?.length || 0,
+    });
+  } catch (error) {
+    console.error('Error fetching statistics:', error);
+  } finally {
+    setStatsLoading(false);
+  }
+};
 
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
