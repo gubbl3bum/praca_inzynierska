@@ -26,6 +26,7 @@ def api_root(request):
             'auth': '/api/auth/',
             'lists': '/api/lists/',
             'status': '/api/status/',
+            'gamification': '/api/gamification'
         }
     })
 
@@ -398,4 +399,8 @@ urlpatterns = [
 
     # REVIEWS
     path('api/reviews/', include('ml_api.urls_reviews')),
+
+    # GAMIFICATION
+    path('api/gamification/', include('ml_api.urls_gamification')),
+
 ]

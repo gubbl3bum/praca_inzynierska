@@ -122,3 +122,25 @@
   .animate-heartbeat {
     animation: heartbeat 0.6s ease-in-out;
   }
+
+  @keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+@keyframes shrink {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}

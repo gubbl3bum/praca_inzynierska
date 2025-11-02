@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../services/AuthContext';
+import { useBadgeCheck } from '../hooks/useBadgeCheck';
 import BookCard from '../components/BookCard';
 import CreateListModal from '../components/CreateListModal';
 import api from '../services/api';
@@ -9,6 +10,7 @@ import api from '../services/api';
 const UserLists = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { checkBadges } = useBadgeCheck();
   const [lists, setLists] = useState([]);
   const [selectedList, setSelectedList] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -177,6 +179,8 @@ const UserLists = () => {
           setSelectedList(null);
         }
         await fetchLists();
+
+        await checkBadges();
       }
     } catch (err) {
       console.error('Error deleting list:', err);

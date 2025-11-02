@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../services/AuthContext';
+import { useBadgeCheck } from '../hooks/useBadgeCheck';
 import api from '../services/api';
 
 const ReviewForm = ({ book, existingReview = null, onSuccess, onCancel }) => {
   const { isAuthenticated } = useAuth();
+  const { checkBadges } = useBadgeCheck();
   const [rating, setRating] = useState(existingReview?.rating || 0);
   const [hoverRating, setHoverRating] = useState(0);
   const [reviewText, setReviewText] = useState(existingReview?.review_text || '');
@@ -66,6 +68,8 @@ const ReviewForm = ({ book, existingReview = null, onSuccess, onCancel }) => {
       if (response.status === 'success') {
         setSuccess(true);
         setError(null);
+
+        await checkBadges();
         
         // Callback po sukcesie
         if (onSuccess) {
@@ -111,6 +115,7 @@ const ReviewForm = ({ book, existingReview = null, onSuccess, onCancel }) => {
 
       if (response.status === 'success') {
         if (onSuccess) {
+          await checkBadges();
           onSuccess(null); // null = deleted
         }
       }

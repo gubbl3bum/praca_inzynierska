@@ -1,8 +1,10 @@
 // frontend/src/components/CreateListModal.js
 import React, { useState } from 'react';
+import { useBadgeCheck } from '../hooks/useBadgeCheck';
 import api from '../services/api';
 
 const CreateListModal = ({ isOpen, onClose, onSuccess }) => {
+  const { checkBadges } = useBadgeCheck(); 
   const [newListData, setNewListData] = useState({
     name: '',
     description: '',
@@ -47,6 +49,8 @@ const CreateListModal = ({ isOpen, onClose, onSuccess }) => {
         // Reset form
         setNewListData({ name: '', description: '', is_public: false });
         setCreateError(null);
+
+        await checkBadges();
         
         // Call success callback with the new list
         if (onSuccess) {

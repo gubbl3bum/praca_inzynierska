@@ -2,7 +2,8 @@ from django.contrib import admin
 from .models import (
     Book, Author, Publisher, Category, BookAuthor, BookCategory,
     User, UserPreferences, BookReview, BookList, BookListItem,
-    ReadingProgress
+    ReadingProgress, Badge, UserBadge, UserStatistics, Achievement,
+    Leaderboard
 )
 
 @admin.register(Author)
@@ -121,3 +122,26 @@ class ReadingProgressAdmin(admin.ModelAdmin):
     list_filter = ('status', 'created_at')
     search_fields = ('user__username', 'book__title')
     readonly_fields = ('created_at', 'updated_at')
+
+@admin.register(Badge)
+class BadgeAdmin(admin.ModelAdmin):
+    list_display = ('icon', 'name', 'category', 'rarity', 'points', 'is_active')
+    list_filter = ('category', 'rarity', 'is_active')
+    search_fields = ('name', 'description')
+
+@admin.register(UserBadge)
+class UserBadgeAdmin(admin.ModelAdmin):
+    list_display = ('user', 'badge', 'progress', 'completed', 'earned_at')
+    list_filter = ('completed', 'badge__category')
+    search_fields = ('user__username', 'badge__name')
+
+@admin.register(UserStatistics)
+class UserStatisticsAdmin(admin.ModelAdmin):
+    list_display = ('user', 'total_badges_earned', 'total_points', 'books_read', 'total_reviews')
+    search_fields = ('user__username',)
+
+@admin.register(Achievement)
+class AchievementAdmin(admin.ModelAdmin):
+    list_display = ('user', 'achievement_type', 'achieved_at')
+    list_filter = ('achievement_type',)
+    search_fields = ('user__username',)

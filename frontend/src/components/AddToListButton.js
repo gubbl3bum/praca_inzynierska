@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../services/AuthContext';
 import api from '../services/api';
 import CreateListModal from './CreateListModal';
+import { useBadgeCheck } from '../hooks/useBadgeCheck';
 
 const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
   const { isAuthenticated, user } = useAuth();
+  const { checkBadges } = useBadgeCheck();
   const [showMenu, setShowMenu] = useState(false);
   const [lists, setLists] = useState([]);
   const [bookLists, setBookLists] = useState([]);
@@ -115,6 +117,7 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
       if (response.status === 'success') {
         setMessage({ type: 'success', text: 'Book added to list!' });
         await checkBookInLists();
+        await checkBadges();
         
         setTimeout(() => {
           setMessage({ type: '', text: '' });
@@ -167,6 +170,8 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
           setFavoriteItemId(null);
           setMessage({ type: 'success', text: '💔 Removed from favorites' });
           
+          await checkBadges();
+          
           if (onFavoriteChange) {
             onFavoriteChange(false);
           }
@@ -188,6 +193,11 @@ const AddToListButton = ({ book, compact = false, onFavoriteChange }) => {
             onFavoriteChange(true);
           }
           
+          setTimeout(async () => {
+            console.log('🔍 Checking badges after adding to list...');
+            await checkBadges();
+          }, 500);
+
           setTimeout(() => {
             setMessage({ type: '', text: '' });
           }, 2000);
