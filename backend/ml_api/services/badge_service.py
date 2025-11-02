@@ -74,7 +74,7 @@ class BadgeService:
             trigger_type: Optional specific trigger (e.g., 'review_created', 'book_finished')
         
         Returns:
-            List of newly earned badges
+            List of newly earned badges (that haven't been notified yet)
         """
         stats = BadgeService.update_user_statistics(user)
         newly_earned = []
@@ -82,8 +82,7 @@ class BadgeService:
         # Get all active badges
         badges = Badge.objects.filter(is_active=True)
         
-        # POPRAWIONE: Lepsze filtrowanie po trigger_type
-        # Mapowanie triggerów na typy wymagań
+        # Filter by trigger type if provided
         trigger_mapping = {
             'review_created': ['review_count', 'review_perfect_count', 'review_harsh_count', 'review_detailed_count'],
             'books_read': ['books_read', 'books_in_month', 'books_in_year', 'night_reading', 'early_reading', 'weekend_books'],
@@ -104,7 +103,9 @@ class BadgeService:
                 defaults={'progress': 0}
             )
             
-            if user_badge.completed:
+            was_completed = user_badge.completed
+            
+            if was_completed:
                 continue  # Already earned
             
             # Check badge requirements
@@ -115,6 +116,8 @@ class BadgeService:
             if current_progress >= badge.requirement_value:
                 user_badge.completed = True
                 user_badge.earned_at = timezone.now()
+                user_badge.notification_sent = False  
+                
                 newly_earned.append(badge)
                 
                 # Update user stats
@@ -303,7 +306,6 @@ class BadgeService:
         badge_progress.sort(key=lambda x: x['progress_percentage'], reverse=True)
         
         return badge_progress[:limit]
-
 
 class AchievementService:
     """

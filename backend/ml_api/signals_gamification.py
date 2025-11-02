@@ -45,8 +45,10 @@ def check_badges_after_reading(sender, instance, created, **kwargs):
 def check_badges_after_list_addition(sender, instance, created, **kwargs):
     """Check badges after adding book to list"""
     if created:
+        print(f" Signal: Book added to list {instance.book_list.name}")
         # Check favorite badges
         if instance.book_list.list_type == 'favorites':
+            print(f"Checking favorite badges for user {instance.book_list.user.username}")
             BadgeService.check_and_award_badges(instance.book_list.user, trigger_type='favorite_count')
         
         # Check collection badges

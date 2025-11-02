@@ -109,17 +109,31 @@ def user_badges(request):
 def check_badges(request):
     """
     Manually trigger badge check for current user
-    Returns newly earned badges
+    Returns newly earned badges that haven't been notified yet
     """
     user = request.user
     
+    pending_notifications = UserBadge.objects.filter(
+        user=user,
+        completed=True,
+        notification_sent=False
+    ).select_related('badge')
+    
+    badges_to_notify = []
+    for user_badge in pending_notifications:
+        badges_to_notify.append(user_badge.badge)
+        user_badge.notification_sent = True
+        user_badge.save()
+    
     newly_earned = BadgeService.check_and_award_badges(user)
     
-    if newly_earned:
-        serializer = BadgeSerializer(newly_earned, many=True)
+    all_new_badges = badges_to_notify + newly_earned
+    
+    if all_new_badges:
+        serializer = BadgeSerializer(all_new_badges, many=True)
         return Response({
             'status': 'success',
-            'message': f'Congratulations! You earned {len(newly_earned)} new badge(s)!',
+            'message': f'Congratulations! You earned {len(all_new_badges)} new badge(s)!',
             'new_badges': serializer.data
         })
     else:
@@ -128,7 +142,6 @@ def check_badges(request):
             'message': 'No new badges earned',
             'new_badges': []
         })
-
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
