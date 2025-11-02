@@ -3,9 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../services/AuthContext';
 import api from '../services/api';
 
+import { useBadgeCheck } from '../hooks/useBadgeCheck';
+import { useNotifications } from '../services/NotificationContext';
+import { checkUserBadges } from '../services/badgeCheckService';
+
 const UserProfile = () => {
   const navigate = useNavigate();
   const { user, logout, updateProfile, changePassword, isLoading } = useAuth();
+  const { showBadgeNotification } = useNotifications();
+  const { checkBadges } = useBadgeCheck();
   
   const [profileData, setProfileData] = useState({
     first_name: '',
@@ -27,7 +33,23 @@ const UserProfile = () => {
   
   // Statistics
   const [statistics, setStatistics] = useState(null);
+
   const [statsLoading, setStatsLoading] = useState(true);
+
+    const handleCheckBadges = async () => {
+    const token = localStorage.getItem('wolfread_tokens');
+    const tokens = token ? JSON.parse(token) : null;
+    
+    if (!tokens?.access) return;
+
+    const result = await checkUserBadges(tokens.access, (badge) => {
+      showBadgeNotification(badge);
+    });
+
+    if (result.success && result.count > 0) {
+      console.log(`✨ Earned ${result.count} new badge(s)!`);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -37,6 +59,8 @@ const UserProfile = () => {
         email: user.email || ''
       });
       fetchUserStatistics();
+      handleCheckBadges(); 
+      checkBadges();
     }
   }, [user]);
 
@@ -59,7 +83,7 @@ const fetchUserStatistics = async () => {
     
     setStatistics({
       totalPoints: gamificationStats.statistics?.total_points || 0,
-      badgesEarned: gamificationStats.statistics?.total_badges_earned || 0,  // POPRAWKA: zmienione z badges_earned
+      badgesEarned: gamificationStats.statistics?.total_badges_earned || 0,  
       booksRead: gamificationStats.statistics?.books_read || 0,
       totalReviews: reviewStats.user_statistics?.total_reviews || 0,
       averageRating: reviewStats.user_statistics?.average_rating || 0,
