@@ -586,6 +586,41 @@ const api = {
   lists: listsAPI, 
   reviews: reviewsApi,
   gamification: gamificationApi,
+// User preferences
+  preferences: {
+    getOptions: () => apiCall('/preferences/options/'),
+    
+    getProfile: (token) => 
+      apiCall('/preferences/profile/', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }),
+    
+    saveProfile: (data, token) =>
+      apiCall('/preferences/profile/', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      }),
+    
+    checkProfile: (token) =>
+      apiCall('/preferences/check/', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+  },
+  
+  // Collaborative recommendations
+  recommendations: {
+    getCollaborative: (userId, params = {}, token) => {
+      const queryString = new URLSearchParams(params).toString();
+      return apiCall(
+        `/recommendations/collaborative/${userId}/?${queryString}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+    }
+  },
 };
 
 export default api;
