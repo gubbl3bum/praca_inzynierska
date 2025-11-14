@@ -46,7 +46,7 @@ const SimilarBooks = ({ bookId }) => {
       name: 'Users Also Liked',
       icon: '👥',
       description: 'Based on user preferences',
-      implemented: false
+      implemented: true
     },
     {
       id: 'hybrid',
@@ -126,30 +126,55 @@ const SimilarBooks = ({ bookId }) => {
     }
   };
 
-  const fetchUserBasedRecommendations = async () => {
+const fetchUserBasedRecommendations = async () => {
     try {
       setUserLoading(true);
       setUserError(null);
       
-      console.log('👥 Fetching user-based recommendations (placeholder)');
+      console.log('👥 Fetching user-based recommendations');
       
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const token = localStorage.getItem('wolfread_tokens');
+      const tokens = token ? JSON.parse(token) : null;
       
-      // Generate placeholder data based on content recommendations
-      const placeholderBooks = contentBooks.map(book => ({
-        ...book,
-        similarity_score: Math.random() * 0.4 + 0.3, // Random similarity 30-70%
-        recommendation_reason: 'Users with similar taste also liked this book',
-        recommendation_type: 'collaborative_filtering'
-      })).slice(0, 6); // Show fewer for placeholder
+      if (!tokens?.access) {
+        setUserError('Please log in to see personalized recommendations');
+        setUserBooks([]);
+        setUserTotal(0);
+        setUserLoading(false);
+        return;
+      }
       
-      setUserBooks(placeholderBooks);
-      setUserTotal(placeholderBooks.length);
+      // Get current user ID from token or context
+      const userId = tokens.user_id || 'me';
+      
+      const params = {
+        limit: booksPerPage * 3,
+        min_similarity: 0.3
+      };
+      
+      const response = await api.recommendations.getCollaborative(
+        userId, 
+        params, 
+        tokens.access
+      );
+      
+      if (response.status === 'success') {
+        const allBooks = response.recommendations || [];
+        
+        // Client-side pagination
+        const startIndex = (userPage - 1) * booksPerPage;
+        const endIndex = startIndex + booksPerPage;
+        const paginatedBooks = allBooks.slice(startIndex, endIndex);
+        
+        setUserBooks(paginatedBooks);
+        setUserTotal(allBooks.length);
+      } else {
+        throw new Error(response.message || 'Failed to fetch user-based recommendations');
+      }
       
     } catch (err) {
-      console.error('❌ Error fetching user-based recommendations:', err);
-      setUserError('User-based recommendations not implemented yet');
+      console.error('Error fetching user-based recommendations:', err);
+      setUserError('Failed to load personalized recommendations');
       setUserBooks([]);
       setUserTotal(0);
     } finally {
