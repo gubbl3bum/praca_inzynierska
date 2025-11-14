@@ -2,7 +2,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import BookReview, ReadingProgress, BookList, BookListItem
 from .services.badge_service import BadgeService, AchievementService
-
+from django.db import transaction 
 
 @receiver(post_save, sender=BookReview)
 def check_badges_after_review(sender, instance, created, **kwargs):
@@ -45,7 +45,19 @@ def check_badges_after_reading(sender, instance, created, **kwargs):
 def check_badges_after_list_addition(sender, instance, created, **kwargs):
     """Check badges after adding book to list"""
     if created:
-        print(f" Signal: Book added to list {instance.book_list.name}")
+        print(f"Signal: Book added to list {instance.book_list.name}")
+        
+        # Prevent duplicate checks in same transaction
+        if transaction.get_connection().in_atomic_block:
+            # Delay badge check to after transaction commits
+            transaction.on_commit(lambda: _delayed_badge_check(instance))
+        else:
+            _delayed_badge_check(instance)
+
+
+def _delayed_badge_check(instance):
+    """Delayed badge check to prevent race conditions"""
+    try:
         # Check favorite badges
         if instance.book_list.list_type == 'favorites':
             print(f"Checking favorite badges for user {instance.book_list.user.username}")
@@ -53,10 +65,18 @@ def check_badges_after_list_addition(sender, instance, created, **kwargs):
         
         # Check collection badges
         BadgeService.check_and_award_badges(instance.book_list.user, trigger_type='custom_list')
+    except Exception as e:
+        print(f"Error in delayed badge check: {e}")
 
 
 @receiver(post_save, sender=BookList)
 def check_badges_after_list_creation(sender, instance, created, **kwargs):
     """Check badges after creating a list"""
     if created and instance.list_type == 'custom':
-        BadgeService.check_and_award_badges(instance.user, trigger_type='custom_list_count')
+        # Add same transaction protection
+        if transaction.get_connection().in_atomic_block:
+            transaction.on_commit(
+                lambda: BadgeService.check_and_award_badges(instance.user, trigger_type='custom_list_count')
+            )
+        else:
+            BadgeService.check_and_award_badges(instance.user, trigger_type='custom_list_count')
