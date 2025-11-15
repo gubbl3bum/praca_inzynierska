@@ -89,12 +89,56 @@ const BookDetails = () => {
     if (typeof book.authors === 'string') {
       return book.authors;
     } else if (Array.isArray(book.authors)) {
-      return book.authors.map(a => typeof a === 'string' ? a : a.name || a.full_name || 'Unknown').join(', ');
+      return book.authors.map(a => {
+        if (typeof a === 'string') return a;
+        if (typeof a === 'object' && a !== null) {
+          return a.name || a.full_name || (a.first_name && a.last_name ? `${a.first_name} ${a.last_name}` : 'Unknown');
+        }
+        return 'Unknown';
+      }).filter(Boolean).join(', ');
+    } else if (typeof book.authors === 'object' && book.authors !== null) {
+      // Handle single author as object
+      return book.authors.name || book.authors.full_name || 
+             (book.authors.first_name && book.authors.last_name 
+               ? `${book.authors.first_name} ${book.authors.last_name}` 
+               : 'Unknown Author');
     } else if (book.author) {
-      return typeof book.author === 'string' ? book.author : book.author.name || book.author.full_name || 'Unknown Author';
+      if (typeof book.author === 'string') {
+        return book.author;
+      } else if (typeof book.author === 'object' && book.author !== null) {
+        return book.author.name || book.author.full_name || 
+               (book.author.first_name && book.author.last_name 
+                 ? `${book.author.first_name} ${book.author.last_name}` 
+                 : 'Unknown Author');
+      }
     }
     
     return 'Unknown Author';
+  };
+
+  const getCategoriesDisplay = (book) => {
+    if (!book || !book.categories) return [];
+    
+    if (Array.isArray(book.categories)) {
+      return book.categories.map(cat => {
+        if (typeof cat === 'string') return cat;
+        if (typeof cat === 'object' && cat !== null) {
+          return cat.name || 'Unknown';
+        }
+        return null;
+      }).filter(Boolean);
+    }
+    
+    return [];
+  };
+
+  const getPublisherDisplay = (publisher) => {
+    if (!publisher) return null;
+    if (typeof publisher === 'string') return publisher;
+    if (typeof publisher === 'object' && publisher !== null) {
+      return publisher.name || 'Unknown Publisher';
+    }
+    return 'Unknown Publisher';
   };
 
   if (loading) {
@@ -153,6 +197,8 @@ const BookDetails = () => {
   const rating = book.average_rating || 0;
   const ratingsCount = book.ratings_count || 0;
   const authorsDisplay = getAuthorsDisplay(book);
+  const categoriesDisplay = getCategoriesDisplay(book);
+  const publisherDisplay = getPublisherDisplay(book.publisher);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -174,7 +220,7 @@ const BookDetails = () => {
                 {coverUrl ? (
                   <img 
                     src={coverUrl} 
-                    alt={book.title} 
+                    alt={`Cover of ${book.title}`}
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       e.target.style.display = 'none';
@@ -224,11 +270,11 @@ const BookDetails = () => {
                 </div>
               </div>
 
-              {book.categories && book.categories.length > 0 && (
+              {categoriesDisplay.length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-gray-800 mb-2">Categories:</h3>
                   <div className="flex flex-wrap gap-2">
-                    {book.categories.map((category, index) => (
+                    {categoriesDisplay.map((category, index) => (
                       <span 
                         key={index}
                         className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium"
@@ -250,12 +296,10 @@ const BookDetails = () => {
                   </div>
                 )}
                 
-                {book.publisher && (
+                {publisherDisplay && (
                   <div>
                     <span className="text-gray-600 font-medium">Publisher:</span>
-                    <span className="ml-2">
-                      {typeof book.publisher === 'string' ? book.publisher : book.publisher.name}
-                    </span>
+                    <span className="ml-2">{publisherDisplay}</span>
                   </div>
                 )}
                 
