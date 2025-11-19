@@ -613,14 +613,54 @@ const api = {
   
   // Collaborative recommendations
   recommendations: {
-    getCollaborative: (userId, params = {}, token) => {
-      const queryString = new URLSearchParams(params).toString();
-      return apiCall(
-        `/recommendations/collaborative/${userId}/?${queryString}`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      );
+    getCollaborative: async (userId = 'me', params = {}, token = null) => {
+      try {
+        const queryString = new URLSearchParams(params).toString();
+        const url = queryString 
+          ? `${API_BASE_URL}/recommendations/collaborative/?${queryString}`
+          : `${API_BASE_URL}/recommendations/collaborative/`;
+        
+        console.log('🔍 Fetching collaborative recommendations from:', url);
+        
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+        
+        const getAuthToken = () => {
+          try {
+            const tokens = localStorage.getItem('wolfread_tokens');
+            return tokens ? JSON.parse(tokens).access : null;
+          } catch {
+            return null;
+          }
+        };
+        
+        const authToken = token || getAuthToken();
+        if (authToken) {
+          headers['Authorization'] = `Bearer ${authToken}`;
+        }
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: headers,
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Collaborative recommendations loaded:', data);
+        return data;
+        
+      } catch (error) {
+        console.error('Error fetching collaborative recommendations:', error);
+        throw error;
+      }
     }
-  },
-};
+  }
+  };
 
 export default api;
