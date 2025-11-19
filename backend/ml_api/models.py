@@ -775,3 +775,174 @@ class Leaderboard(models.Model):
     
     def __str__(self):
         return f"#{self.rank} {self.user.username} - {self.category} ({self.period})"
+    
+class UserPreferenceProfile(models.Model):
+    """
+    Extended user preference profile for recommendation system
+    """
+    user = models.OneToOneField(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='preference_profile'
+    )
+    
+    # Category preferences (weighted)
+    # Format: {category_id: weight} where weight is 0.0-1.0
+    preferred_categories = models.JSONField(default=dict)
+    
+    # Preferred authors (list of IDs)
+    preferred_authors = models.JSONField(default=list)
+    
+    # Preferred publishers (list of IDs)
+    preferred_publishers = models.JSONField(default=list)
+    
+    # Rating threshold (minimum rating to consider)
+    min_rating_threshold = models.FloatField(default=0.0)
+    
+    # Year range preference
+    preferred_year_range = models.JSONField(
+        default=dict,  # Format: {'min': 1900, 'max': 2024}
+        blank=True
+    )
+    
+    # Completion status
+    completed = models.BooleanField(default=False)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'user_preference_profiles'
+    
+    def __str__(self):
+        return f"Preference Profile for {self.user.username}"
+
+
+class UserSimilarity(models.Model):
+    """
+    Precomputed user similarities for collaborative filtering
+    """
+    user1 = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='similarities_as_user1'
+    )
+    user2 = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='similarities_as_user2'
+    )
+    
+    # Similarity scores (0.0 - 1.0)
+    preference_similarity = models.FloatField(default=0.0)
+    rating_similarity = models.FloatField(default=0.0)
+    combined_similarity = models.FloatField(default=0.0)
+    
+    # Metadata
+    calculated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'user_similarities'
+        unique_together = ['user1', 'user2']
+        indexes = [
+            models.Index(fields=['user1', 'combined_similarity']),
+            models.Index(fields=['user2', 'combined_similarity']),
+            models.Index(fields=['combined_similarity']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user1.username} ↔ {self.user2.username}: {self.combined_similarity:.3f}"
+    
+    @classmethod
+    def get_similar_users(cls, user, limit=10, min_similarity=0.3):
+        """
+        Get similar users for given user
+        """
+        from django.db.models import Q
+        
+        similar = cls.objects.filter(
+            Q(user1=user) | Q(user2=user),
+            combined_similarity__gte=min_similarity
+        ).select_related('user1', 'user2').order_by('-combined_similarity')[:limit]
+        
+        results = []
+        for sim in similar:
+            other_user = sim.user2 if sim.user1 == user else sim.user1
+            results.append({
+                'user': other_user,
+                'similarity': sim.combined_similarity,
+                'preference_similarity': sim.preference_similarity,
+                'rating_similarity': sim.rating_similarity
+            })
+        
+        return results
+    """
+    Precomputed user similarities for collaborative filtering
+    """
+    user1 = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='similarities_as_user1'
+    )
+    user2 = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='similarities_as_user2'
+    )
+    
+    # Similarity scores
+    preference_similarity = models.FloatField(
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text="Based on preference profiles"
+    )
+    rating_similarity = models.FloatField(
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text="Based on rating patterns (collaborative filtering)"
+    )
+    combined_similarity = models.FloatField(
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text="Weighted combination of all factors"
+    )
+    
+    # Metadata
+    calculated_at = models.DateTimeField(auto_now=True)
+    version = models.IntegerField(default=1)
+    
+    class Meta:
+        db_table = 'user_similarities'
+        unique_together = ['user1', 'user2']
+        indexes = [
+            models.Index(fields=['user1', 'combined_similarity']),
+            models.Index(fields=['user2', 'combined_similarity']),
+            models.Index(fields=['combined_similarity']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user1.username} ↔ {self.user2.username}: {self.combined_similarity:.3f}"
+    
+    @classmethod
+    def get_similar_users(cls, user, limit=10, min_similarity=0.3):
+        """Find similar users"""
+        similar = cls.objects.filter(
+            models.Q(user1=user) | models.Q(user2=user),
+            combined_similarity__gte=min_similarity
+        ).select_related('user1', 'user2').order_by('-combined_similarity')[:limit]
+        
+        results = []
+        for sim in similar:
+            other_user = sim.user2 if sim.user1 == user else sim.user1
+            results.append({
+                'user': other_user,
+                'similarity': sim.combined_similarity,
+                'details': {
+                    'preference': sim.preference_similarity,
+                    'rating': sim.rating_similarity
+                }
+            })
+        
+        return results    
+    

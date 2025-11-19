@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import BookCard from '../components/BookCard';
+import PreferenceModal from '../components/PreferenceModal';
+import { useAuth } from '../services/AuthContext';
 import api from '../services/api';
 
 const Home = () => {
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+  const [showPreferenceModal, setShowPreferenceModal] = useState(false);
   const [featuredBooks, setFeaturedBooks] = useState({
     top_rated: [],
     recent: [],
@@ -10,10 +16,45 @@ const Home = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
+  
   useEffect(() => {
     fetchFeaturedBooks();
   }, []);
+  
+  // ✅ SEPARATE EFFECT FOR PREFERENCE MODAL
+  useEffect(() => {
+    const checkPreferenceModal = () => {
+      console.log('Checking preference modal...');
+      console.log('   isAuthenticated:', isAuthenticated);
+      console.log('   user:', user);
+      
+      if (isAuthenticated && user) {
+        const shouldShow = localStorage.getItem('show_preference_form');
+        console.log('   show_preference_form flag:', shouldShow);
+        
+        if (shouldShow === 'true') {
+          console.log('Opening preference modal!');
+          setShowPreferenceModal(true);
+          localStorage.removeItem('show_preference_form');
+        } else {
+          console.log('ℹ️  No preference form flag set');
+        }
+      } else {
+        console.log('ℹ️  User not authenticated, skipping preference check');
+      }
+    };
+    
+    // Small delay to ensure authentication is fully loaded
+    const timer = setTimeout(checkPreferenceModal, 500);
+    
+    return () => clearTimeout(timer);
+  }, [isAuthenticated, user]);
+    
+  const handlePreferenceComplete = () => {
+    console.log('Preference form completed/closed');
+    setShowPreferenceModal(false);
+    // Optionally refresh recommendations
+  };
 
   const fetchFeaturedBooks = async () => {
     try {
@@ -39,7 +80,6 @@ const Home = () => {
 
   const handleBookClick = (book) => {
     console.log('Clicked book:', book);
-    // Navigation jest obsługiwana w BookCard
   };
 
   // Fallback sample data with Open Library integration
@@ -139,16 +179,6 @@ const Home = () => {
     </section>
   );
 
-  const handleRefreshCovers = async () => {
-    try {
-      setLoading(true);
-      await api.books.refreshCovers(20); // Refresh covers for 20 books
-      await fetchFeaturedBooks(); // Reload data
-    } catch (err) {
-      console.error('Error refreshing covers:', err);
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center">
@@ -184,18 +214,6 @@ const Home = () => {
             </button>
           </div>
         )}
-
-        {/* Admin controls for development
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mb-8">
-            <button
-              onClick={handleRefreshCovers}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm"
-            >
-              Refresh Book Covers from Open Library
-            </button>
-          </div>
-        )} */}
       </div>
 
       {/* Books Sections */}
@@ -252,6 +270,19 @@ const Home = () => {
           </p>
         </div>
       </div>
+      
+      {/* PREFERENCE MODAL WITH DEBUG INFO */}
+      {showPreferenceModal && (
+        <div>
+          <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50">
+            ✨ Preference form opened!
+          </div>
+          <PreferenceModal 
+            isOpen={showPreferenceModal}
+            onClose={handlePreferenceComplete}
+          />
+        </div>
+      )}
     </div>
   );
 };

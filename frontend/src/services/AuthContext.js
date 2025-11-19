@@ -187,30 +187,43 @@ export const AuthProvider = ({ children }) => {
 
   // Log in function
   const login = async (email, password) => {
-    dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: true });
-    dispatch({ type: AUTH_ACTIONS.CLEAR_ERROR });
-    
     try {
+      dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: true });
+      dispatch({ type: AUTH_ACTIONS.CLEAR_ERROR });
+
       const response = await api.auth.login(email, password);
-      
+
       if (response.status === 'success') {
         const { user, tokens } = response;
         
-        // Save tokens to localStorage
-        saveTokensToStorage(tokens);
-        
-        // Update status
+        // Save to state
         dispatch({
           type: AUTH_ACTIONS.LOGIN_SUCCESS,
           payload: { user, tokens }
         });
         
+        // Save to localStorage
+        saveTokensToStorage(tokens);
+        
+        // CHECK PREFERENCES IMMEDIATELY AFTER LOGIN
+        try {
+          const prefCheck = await api.preferences.checkProfile(tokens.access);
+          console.log('🔍 Preference check result:', prefCheck);
+          
+          if (prefCheck.status === 'success' && prefCheck.should_show_form) {
+            console.log('✨ Setting flag to show preference form');
+            localStorage.setItem('show_preference_form', 'true');
+          }
+        } catch (err) {
+          console.error('Could not check preferences:', err);
+        }
+        
         return { success: true, user };
       } else {
         throw new Error(response.message || 'Login failed');
       }
-    } catch (error) {
-      const errorMessage = api.handleError(error, 'Błąd podczas logowania');
+    } catch (err) {
+      const errorMessage = api.handleError(err, 'Login failed');
       dispatch({ type: AUTH_ACTIONS.SET_ERROR, payload: errorMessage });
       return { success: false, error: errorMessage };
     }
@@ -236,12 +249,16 @@ export const AuthProvider = ({ children }) => {
           payload: { user, tokens }
         });
         
+        // ALWAYS SHOW PREFERENCE FORM AFTER REGISTRATION
+        console.log('🆕 New user registered - setting preference form flag');
+        localStorage.setItem('show_preference_form', 'true');
+        
         return { success: true, user };
       } else {
         throw new Error(response.message || 'Registration failed');
       }
     } catch (error) {
-      const errorMessage = api.handleError(error, 'Błąd podczas rejestracji');
+      const errorMessage = api.handleError(error, 'Registration error');
       dispatch({ type: AUTH_ACTIONS.SET_ERROR, payload: errorMessage });
       return { success: false, error: errorMessage };
     }
@@ -260,6 +277,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       // Clear localStorage and state
       clearTokensFromStorage();
+      localStorage.removeItem('show_preference_form'); // ✅ Clear preference flag
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
     }
   };
@@ -279,7 +297,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error(response.message || 'Profile update failed');
       }
     } catch (error) {
-      const errorMessage = api.handleError(error, 'Błąd podczas aktualizacji profilu');
+      const errorMessage = api.handleError(error, 'Profile update error');
       return { success: false, error: errorMessage };
     }
   };
@@ -301,7 +319,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error(response.message || 'Password change failed');
       }
     } catch (error) {
-      const errorMessage = api.handleError(error, 'Błąd podczas zmiany hasła');
+      const errorMessage = api.handleError(error, 'Password change error');
       return { success: false, error: errorMessage };
     }
   };
@@ -314,7 +332,6 @@ export const AuthProvider = ({ children }) => {
   // The value of context
   const value = {
     ...state,
-    // funcions
     login,
     register,
     logout,

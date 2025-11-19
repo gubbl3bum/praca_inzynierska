@@ -46,7 +46,7 @@ const SimilarBooks = ({ bookId }) => {
       name: 'Users Also Liked',
       icon: '👥',
       description: 'Based on user preferences',
-      implemented: false
+      implemented: true
     },
     {
       id: 'hybrid',
@@ -131,25 +131,49 @@ const SimilarBooks = ({ bookId }) => {
       setUserLoading(true);
       setUserError(null);
       
-      console.log('👥 Fetching user-based recommendations (placeholder)');
+      console.log('Fetching user-based recommendations');
       
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const token = localStorage.getItem('wolfread_tokens');
+      const tokens = token ? JSON.parse(token) : null;
       
-      // Generate placeholder data based on content recommendations
-      const placeholderBooks = contentBooks.map(book => ({
-        ...book,
-        similarity_score: Math.random() * 0.4 + 0.3, // Random similarity 30-70%
-        recommendation_reason: 'Users with similar taste also liked this book',
-        recommendation_type: 'collaborative_filtering'
-      })).slice(0, 6); // Show fewer for placeholder
+      if (!tokens?.access) {
+        setUserError('Please log in to see personalized recommendations');
+        setUserBooks([]);
+        setUserTotal(0);
+        setUserLoading(false);
+        return;
+      }
       
-      setUserBooks(placeholderBooks);
-      setUserTotal(placeholderBooks.length);
+      const params = {
+        limit: booksPerPage * 3,
+        min_similarity: 0.3
+      };
+      
+      const response = await api.recommendations.getCollaborative(
+        'me',  
+        params, 
+        tokens.access
+      );
+      
+      if (response.status === 'success') {
+        const allBooks = response.recommendations || [];
+        
+        // Client-side pagination
+        const startIndex = (userPage - 1) * booksPerPage;
+        const endIndex = startIndex + booksPerPage;
+        const paginatedBooks = allBooks.slice(startIndex, endIndex);
+        
+        setUserBooks(paginatedBooks);
+        setUserTotal(allBooks.length);
+        
+        console.log('User recommendations loaded:', allBooks.length, 'books');
+      } else {
+        throw new Error(response.message || 'Failed to fetch user-based recommendations');
+      }
       
     } catch (err) {
-      console.error('❌ Error fetching user-based recommendations:', err);
-      setUserError('User-based recommendations not implemented yet');
+      console.error('Error fetching user-based recommendations:', err);
+      setUserError('Failed to load personalized recommendations. ' + (err.message || ''));
       setUserBooks([]);
       setUserTotal(0);
     } finally {
@@ -386,7 +410,7 @@ const SimilarBooks = ({ bookId }) => {
         </p>
       </div>
 
-      {/* Controls - only show for implemented tabs */}
+      {/* Controls - only show for content tab */}
       {activeTab === 'content' && (
         <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-gray-50 p-4 rounded-lg">
           <div className="flex flex-wrap gap-4 items-center">
@@ -451,86 +475,93 @@ const SimilarBooks = ({ bookId }) => {
         </div>
       )}
 
-      {/* Content */}
+      {/* Content Area */}
       {currentData.loading ? (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">
+        // Loading State
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600 text-lg font-medium">
             {activeTab === 'content' ? 'Finding similar books...' : 
-             activeTab === 'users' ? 'Analyzing user preferences...' :
-             'Training AI models...'}
+            activeTab === 'users' ? 'Analyzing user preferences...' :
+            'Training AI models...'}
           </p>
+          <p className="text-gray-500 text-sm mt-2">This may take a moment</p>
         </div>
       ) : currentData.error ? (
-        <div className="text-center py-8">
-          <div className="text-4xl mb-2">⚠️</div>
-          <p className="text-red-600 mb-4">{currentData.error}</p>
+        // Error State
+        <div className="text-center py-12">
+          <div className="text-6xl mb-4">⚠️</div>
+          <p className="text-red-600 mb-2 text-lg font-medium">Oops! Something went wrong</p>
+          <p className="text-gray-600 mb-6">{currentData.error}</p>
           <button
             onClick={() => {
               if (activeTab === 'content') fetchContentBasedRecommendations();
               else if (activeTab === 'users') fetchUserBasedRecommendations();
               else if (activeTab === 'hybrid') fetchHybridRecommendations();
             }}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
           >
             Try Again
           </button>
         </div>
       ) : currentData.total === 0 ? (
-        activeTab === 'content' ? (
-          <div className="text-center py-8 text-gray-500">
-            <div className="text-4xl mb-2">🔍</div>
-            <p className="mb-4">No similar books found.</p>
-            <p className="text-sm text-gray-400">
-              Try lowering the similarity threshold or check back later.
-            </p>
+        // Empty State
+        <div className="text-center py-12 text-gray-500">
+          <div className="text-6xl mb-4">
+            {activeTab === 'content' ? '🔍' : activeTab === 'users' ? '👥' : '🤖'}
           </div>
-        ) : (
-          renderPlaceholderMessage(activeTab)
-        )
+          <p className="text-lg font-medium mb-2">
+            {activeTab === 'content' ? 'No similar books found' : 
+            activeTab === 'users' ? 'No recommendations available yet' :
+            'AI recommendations coming soon!'}
+          </p>
+          <p className="text-sm text-gray-400 max-w-md mx-auto">
+            {activeTab === 'content' ? 'Try lowering the similarity threshold or check back later.' :
+            activeTab === 'users' ? 'The system needs more data about your reading preferences. Try rating some books!' :
+            'Advanced ML features are currently in development.'}
+          </p>
+        </div>
       ) : (
+        // Success State - Show Books
         <>
-          {/* Placeholder message for non-implemented tabs with sample data */}
-          {activeTab !== 'content' && (
-            <div className="mb-6">
-              {renderPlaceholderMessage(activeTab)}
-            </div>
-          )}
-          
-          {/* Books grid */}
+          {/* Books Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
-            {currentData.books.map((book) => (
-              <div key={`${activeTab}-${book.id}`} className="relative">
-                <BookCard
-                  book={book}
-                  onClick={handleBookClick}
-                />
-                
-                {/* Recommendation type badge */}
-                <div 
-                  className={`absolute top-2 left-2 ${getSimilarityBadgeColor(book.similarity_score)} text-white px-2 py-1 rounded-full text-xs font-medium shadow-lg z-10`}
-                  title={`${activeTab === 'content' ? 'Content similarity' : 
-                          activeTab === 'users' ? 'User preference match' : 
-                          'AI recommendation score'}: ${(book.similarity_score * 100).toFixed(1)}%`}
-                >
-                  {activeTab === 'content' ? getSimilarityLabel(book.similarity_score) :
-                   activeTab === 'users' ? 'User Match' :
-                   'AI Pick'}
-                </div>
-                
-                {/* Score */}
-                <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs font-medium z-10">
-                  {(book.similarity_score * 100).toFixed(0)}%
-                </div>
-                
-                {/* Preview badge for non-implemented features */}
-                {activeTab !== 'content' && (
-                  <div className="absolute bottom-2 left-2 bg-yellow-500 text-yellow-900 px-2 py-1 rounded text-xs font-bold z-10">
-                    PREVIEW
+            {currentData.books.map((book) => {
+              const score = book.similarity_score || book.recommendation_score || 0;
+              
+              return (
+                <div key={`${activeTab}-${book.id}`} className="relative group">
+                  <BookCard
+                    book={book}
+                    onClick={handleBookClick}
+                  />
+                  
+                  {/* Recommendation type badge */}
+                  <div 
+                    className={`absolute top-2 left-2 ${getSimilarityBadgeColor(score)} text-white px-2 py-1 rounded-full text-xs font-medium shadow-lg z-10 transition-transform group-hover:scale-110`}
+                    title={`${activeTab === 'content' ? 'Content similarity' : 
+                            activeTab === 'users' ? 'User preference match' : 
+                            'AI recommendation score'}: ${(score * 100).toFixed(1)}%`}
+                  >
+                    {activeTab === 'content' ? getSimilarityLabel(score) :
+                    activeTab === 'users' ? '👥 Match' :
+                    '🤖 AI Pick'}
                   </div>
-                )}
-              </div>
-            ))}
+                  
+                  {/* Score percentage */}
+                  <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs font-medium z-10">
+                    {(score * 100).toFixed(0)}%
+                  </div>
+                  
+                  {/* Recommendation reason tooltip (for users tab) */}
+                  {activeTab === 'users' && book.recommendation_reason && (
+                    <div className="absolute bottom-2 left-2 right-2 bg-blue-600 bg-opacity-90 text-white text-xs p-2 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      💡 {book.recommendation_reason}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Pagination */}
@@ -540,6 +571,9 @@ const SimilarBooks = ({ bookId }) => {
               {/* Page info */}
               <div className="text-sm text-gray-600">
                 Page {currentData.page} of {currentData.totalPages}
+                <span className="text-gray-400 ml-2">
+                  ({currentData.total} total result{currentData.total !== 1 ? 's' : ''})
+                </span>
               </div>
 
               {/* Pagination controls */}
@@ -548,7 +582,7 @@ const SimilarBooks = ({ bookId }) => {
                 <button
                   onClick={() => handlePageChange(currentData.page - 1, activeTab)}
                   disabled={currentData.page === 1}
-                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                     currentData.page === 1
                       ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -562,7 +596,7 @@ const SimilarBooks = ({ bookId }) => {
                   <button
                     key={pageNum}
                     onClick={() => handlePageChange(pageNum, activeTab)}
-                    className={`px-3 py-1 rounded text-sm transition-colors ${
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                       pageNum === currentData.page
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -576,7 +610,7 @@ const SimilarBooks = ({ bookId }) => {
                 <button
                   onClick={() => handlePageChange(currentData.page + 1, activeTab)}
                   disabled={currentData.page === currentData.totalPages}
-                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                     currentData.page === currentData.totalPages
                       ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -587,20 +621,74 @@ const SimilarBooks = ({ bookId }) => {
               </div>
             </div>
           )}
+
+          {/* Statistics bar (for users tab) */}
+          {activeTab === 'users' && currentData.total > 0 && (
+            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 text-blue-800 text-sm">
+                <span className="text-lg">💡</span>
+                <span className="font-medium">
+                  These recommendations are based on users with similar reading preferences.
+                </span>
+              </div>
+              <p className="text-blue-600 text-xs mt-2 ml-7">
+                The more you rate and review books, the better your recommendations become!
+              </p>
+            </div>
+          )}
         </>
       )}
 
       {/* Footer with algorithm info */}
-      <div className="mt-6 pt-4 border-t border-gray-200 text-xs text-gray-500 text-center">
-        {activeTab === 'content' ? (
-          <>
-            <p>Content-based recommendations using cosine similarity (categories, keywords, authors, descriptions).</p>
-            <p className="mt-1">Algorithm weights: 40% categories, 30% keywords, 20% authors, 10% description themes.</p>
-          </>
-        ) : activeTab === 'users' ? (
-          <p>User-based collaborative filtering will analyze reading patterns of users with similar preferences.</p>
-        ) : (
-          <p>Hybrid AI recommendations will combine content analysis, user behavior, and advanced ML techniques.</p>
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <div className="text-xs text-gray-500 text-center space-y-1">
+          {activeTab === 'content' ? (
+            <>
+              <p>
+                <span className="font-medium">Content-based recommendations</span> using cosine similarity 
+                (categories, keywords, authors, descriptions).
+              </p>
+              <p>
+                Algorithm weights: <span className="font-medium">40% categories</span>, 
+                <span className="font-medium"> 30% keywords</span>, 
+                <span className="font-medium"> 20% authors</span>, 
+                <span className="font-medium"> 10% description themes</span>.
+              </p>
+            </>
+          ) : activeTab === 'users' ? (
+            <>
+              <p>
+                <span className="font-medium">Collaborative filtering</span> analyzes reading patterns 
+                of users with similar preferences.
+              </p>
+              <p>
+                Based on rating similarity and preference profile matching.
+              </p>
+            </>
+          ) : (
+            <>
+              <p>
+                <span className="font-medium">Hybrid AI recommendations</span> will combine content analysis, 
+                user behavior, and advanced ML techniques.
+              </p>
+              <p>
+                Deep learning neural networks with real-time personalization.
+              </p>
+            </>
+          )}
+        </div>
+        
+        {/* Debug info (tylko w development) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-4 p-3 bg-gray-100 rounded text-xs font-mono text-gray-600">
+            <div className="font-bold mb-1">Debug Info:</div>
+            <div>Active Tab: {activeTab}</div>
+            <div>Books: {currentData.books.length}</div>
+            <div>Total: {currentData.total}</div>
+            <div>Loading: {currentData.loading ? 'Yes' : 'No'}</div>
+            <div>Error: {currentData.error || 'None'}</div>
+            <div>Page: {currentData.page} / {currentData.totalPages}</div>
+          </div>
         )}
       </div>
     </div>

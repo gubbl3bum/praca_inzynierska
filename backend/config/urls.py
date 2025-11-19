@@ -14,6 +14,7 @@ from ml_api import views_lists
 import json
 
 from ml_api.views import book_recommendations, similarity_stats, recalculate_similarities
+from ml_api import views_preferences, views_recommendations
 
 def api_root(request):
     return JsonResponse({
@@ -402,5 +403,15 @@ urlpatterns = [
 
     # GAMIFICATION
     path('api/gamification/', include('ml_api.urls_gamification')),
+
+    # PREFERENCES ENDPOINTS
+    path('api/preferences/options/', views_preferences.get_preference_options, name='preference_options'),
+    path('api/preferences/profile/', views_preferences.user_preference_profile, name='user_preference_profile'),
+    path('api/preferences/check/', views_preferences.check_preference_profile, name='check_preference_profile'),
+    
+    # COLLABORATIVE RECOMMENDATIONS ENDPOINTS
+    path('api/recommendations/collaborative/<int:user_id>/', views_recommendations.collaborative_recommendations, name='collaborative_recommendations'),
+    path('api/recommendations/collaborative/me/', views_recommendations.collaborative_recommendations, name='collaborative_recommendations_me'),
+    path('api/recommendations/', include('ml_api.urls_recommendations')),
 
 ]

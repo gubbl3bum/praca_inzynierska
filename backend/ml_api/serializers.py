@@ -4,7 +4,8 @@ from django.contrib.auth.password_validation import validate_password
 from .models import (
     Book, Author, Publisher, Category, BookAuthor, BookCategory,
     User, UserPreferences, BookReview, RefreshToken,
-    BookList, BookListItem, ReadingProgress
+    BookList, BookListItem, ReadingProgress,
+    UserPreferenceProfile, UserSimilarity
 )
 
 class AuthorSerializer(serializers.ModelSerializer):
@@ -522,7 +523,7 @@ class BookRecommendationSerializer(serializers.ModelSerializer):
     def get_best_cover_medium(self, obj):
         """Return best available medium cover"""
         return obj.cover_image_url
-    
+  
 # =============================================================================
 # BOOK LIST SERIALIZERS
 # =============================================================================
@@ -571,7 +572,6 @@ class BookListSimpleSerializer(serializers.ModelSerializer):
         """Get book count for the list"""
         count = obj.items.count()
         return int(count)  
-
 
 class BookListDetailSerializer(serializers.ModelSerializer):
     """Detailed book list with items"""
@@ -639,4 +639,87 @@ class AddToListSerializer(serializers.Serializer):
         """Check if book exists"""
         if not Book.objects.filter(id=value).exists():
             raise serializers.ValidationError("Book not found")
+        return value
+    
+# =============================================================================
+# PREFERENCE SERIALIZERS
+# =============================================================================
+
+class CategorySimpleForPreferencesSerializer(serializers.ModelSerializer):
+    """Simple category serializer for preference forms"""
+    class Meta:
+        model = Category
+        fields = ['id', 'name']
+
+
+class AuthorSimpleForPreferencesSerializer(serializers.ModelSerializer):
+    """Simple author serializer for preference forms"""
+    class Meta:
+        model = Author
+        fields = ['id', 'first_name', 'last_name', 'full_name']
+
+
+class PublisherSimpleForPreferencesSerializer(serializers.ModelSerializer):
+    """Simple publisher serializer for preference forms"""
+    class Meta:
+        model = Publisher
+        fields = ['id', 'name']
+
+
+class UserPreferenceProfileSerializer(serializers.ModelSerializer):
+    """User preference profile serializer"""
+    
+    class Meta:
+        model = UserPreferenceProfile
+        fields = [
+            'id', 
+            'preferred_categories', 
+            'preferred_authors',
+            'preferred_publishers',
+            'min_rating_threshold',
+            'preferred_year_range',
+            'completed',
+            'created_at', 
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def validate_preferred_categories(self, value):
+        """Validate that preferred_categories is a dict with category IDs as keys"""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("preferred_categories must be a dictionary")
+        
+        # Validate that all keys are valid category IDs
+        try:
+            category_ids = [int(cat_id) for cat_id in value.keys()]
+            existing_cats = Category.objects.filter(id__in=category_ids).count()
+            if existing_cats != len(category_ids):
+                raise serializers.ValidationError("Some category IDs are invalid")
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Category IDs must be integers")
+        
+        return value
+    
+    def validate_preferred_authors(self, value):
+        """Validate that all author IDs exist"""
+        if not isinstance(value, list):
+            raise serializers.ValidationError("preferred_authors must be a list")
+        
+        if value:
+            existing_authors = Author.objects.filter(id__in=value).count()
+            if existing_authors != len(value):
+                raise serializers.ValidationError("Some author IDs are invalid")
+        
+        return value
+    
+    def validate_preferred_publishers(self, value):
+        """Validate that all publisher IDs exist"""
+        if not isinstance(value, list):
+            raise serializers.ValidationError("preferred_publishers must be a list")
+        
+        if value:
+            existing_publishers = Publisher.objects.filter(id__in=value).count()
+            if existing_publishers != len(value):
+                raise serializers.ValidationError("Some publisher IDs are invalid")
+        
         return value
