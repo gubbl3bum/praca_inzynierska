@@ -412,4 +412,6 @@ urlpatterns = [
     # COLLABORATIVE RECOMMENDATIONS ENDPOINTS
     path('api/recommendations/collaborative/<int:user_id>/', views_recommendations.collaborative_recommendations, name='collaborative_recommendations'),
     path('api/recommendations/collaborative/me/', views_recommendations.collaborative_recommendations, name='collaborative_recommendations_me'),
+    path('api/recommendations/', include('ml_api.urls_recommendations')),
+
 ]
