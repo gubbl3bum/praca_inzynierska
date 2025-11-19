@@ -232,6 +232,8 @@ class UserSimilarityService:
         """
         Get book recommendations based on similar users (collaborative filtering)
         """
+
+        print(f"Getting collaborative recommendations for user: {user.username}")
         # Find similar users
         similar_users = UserSimilarity.get_similar_users(
             user, 
@@ -241,6 +243,8 @@ class UserSimilarityService:
         
         if not similar_users:
             return []
+        
+        print(f"Found {len(similar_users)} similar users")
         
         # Get books rated highly by similar users
         from ..models import Book
