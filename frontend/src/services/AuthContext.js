@@ -126,6 +126,9 @@ export const AuthProvider = ({ children }) => {
       // Check if the token is still valid
       const response = await api.auth.checkStatus(storedTokens.access);
       
+      console.log('🔍 Auth check response:', response); 
+      console.log('👤 User data:', response.user); 
+
       if (response.status === 'success' && response.authenticated) {
         // Valid token - log in user
         dispatch({
