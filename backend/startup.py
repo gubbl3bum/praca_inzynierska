@@ -69,7 +69,7 @@ print(f"BOOKS_COUNT:{count}")
         for line in result.stdout.split('\n'):
             if line.startswith('BOOKS_COUNT:'):
                 count = int(line.split(':')[1])
-                print(f"📚 Found {count} books in database")
+                print(f"Found {count} books in database")
                 return count > 0
                 
     except Exception as e:
@@ -140,7 +140,7 @@ print(f"BADGES_COUNT:{count}")
         for line in result.stdout.split('\n'):
             if line.startswith('BADGES_COUNT:'):
                 count = int(line.split(':')[1])
-                print(f"🎖️  Found {count} badges in database")
+                print(f"Found {count} badges in database")
                 return count > 0
                 
     except Exception as e:
@@ -155,16 +155,13 @@ def initialize_badges():
     try:
         result = subprocess.run([
             'python', 'manage.py', 'init_badges'
-        ], check=True, capture_output=True, text=True)
+        ], check=True)
         
-        print(result.stdout)
         print("Badges initialized!")
         return True
         
     except subprocess.CalledProcessError as e:
         print(f"Badge initialization failed: {e}")
-        print(f"   Output: {e.stdout if hasattr(e, 'stdout') else 'N/A'}")
-        print(f"   Error: {e.stderr if hasattr(e, 'stderr') else 'N/A'}")
         return False
     except FileNotFoundError:
         print("init_badges command not found - skipping")
@@ -188,7 +185,7 @@ def run_data_import():
 
 def generate_rich_users():
     """Generate rich user profiles with many reviews"""
-    print("\n👥 Generating rich user profiles...")
+    print("\n=== Generating rich user profiles ===")
     
     try:
         result = subprocess.run([
@@ -198,16 +195,12 @@ def generate_rich_users():
             '--critics', '15',
             '--enthusiasts', '20',
             '--casual', '30'
-        ], check=True, capture_output=True, text=True)
-        print(result.stdout)
-        print("Rich user profiles generated!")
+        ], check=True)
+        
+        print("=== Rich user profiles generated! ===")
         return True
     except subprocess.CalledProcessError as e:
         print(f"User generation failed: {e}")
-        if hasattr(e, 'stdout'):
-            print(e.stdout)
-        if hasattr(e, 'stderr'):
-            print(e.stderr)
         return False
     except FileNotFoundError:
         print("generate_rich_users.py not found - skipping")
@@ -215,14 +208,14 @@ def generate_rich_users():
 
 def calculate_similarities():
     """Calculate book similarities"""
-    print("\nCalculating book similarities...")
+    print("\n=== Calculating book similarities ===")
     
     try:
         result = subprocess.run([
-            'python', 'init_similarities.py'
-        ], check=True, capture_output=True, text=True, input='2\n50\n7\n', encoding='utf-8')
-        print(result.stdout)
-        print("Book similarities calculated!")
+            'python', 'init_similarities.py', '--auto', '--all'
+        ], check=True)
+        
+        print("=== Book similarities calculated! ===")
         return True
     except subprocess.CalledProcessError as e:
         print(f"Similarity calculation failed: {e}")
@@ -233,21 +226,17 @@ def calculate_similarities():
 
 def calculate_user_similarities():
     """Calculate user similarities for collaborative filtering"""
-    print("\n👥 Calculating user similarities...")
+    print("\n=== Calculating user similarities ===")
     
     try:
         result = subprocess.run([
             'python', 'manage.py', 'calculate_user_similarities', '--all'
-        ], check=True, capture_output=True, text=True)
-        print(result.stdout)
-        print("User similarities calculated!")
+        ], check=True)
+        
+        print("=== User similarities calculated! ===")
         return True
     except subprocess.CalledProcessError as e:
         print(f"User similarity calculation failed: {e}")
-        if hasattr(e, 'stdout'):
-            print(e.stdout)
-        if hasattr(e, 'stderr'):
-            print(e.stderr)
         return False
     except FileNotFoundError:
         print("calculate_user_similarities command not found - skipping")
@@ -255,13 +244,15 @@ def calculate_user_similarities():
 
 def start_django_server():
     """Start Django development server"""
-    print("\nStarting Django server...")
+    print("\n" + "=" * 60)
+    print("Starting Django server...")
+    print("=" * 60)
     
     try:
         # Use exec to transfer control to Django server process
         os.execvp('python', ['python', 'manage.py', 'runserver', '0.0.0.0:8000'])
     except Exception as e:
-        print(f"❌ Cannot start server: {e}")
+        print(f"Cannot start server: {e}")
         sys.exit(1)
 
 def main():
@@ -283,13 +274,17 @@ def main():
     has_users = check_if_users_exist()
     
     if has_books and has_users:
-        print("\nDatabase already fully initialized - skipping setup")
+        print("\n" + "=" * 60)
+        print("Database already fully initialized - skipping setup")
+        print("=" * 60)
     elif has_books and not has_users:
-        print("\nBooks exist but users missing - generating users...")
+        print("\n" + "=" * 60)
+        print("Books exist but users missing - generating users...")
+        print("=" * 60)
         
         # Generate rich users
         if generate_rich_users():
-            print("User generation completed!")
+            print("\nUser generation completed!")
             
             # Calculate similarities
             print("\nCalculating similarities for new users...")
@@ -297,24 +292,30 @@ def main():
         else:
             print("User generation failed")
     elif not has_books:
-        print("\n🔧 Database is empty - starting full initialization...")
+        print("\n" + "=" * 60)
+        print("Database is empty - starting full initialization...")
+        print("=" * 60)
         
         # Step 4: Import data (books + basic users from CSV)
         if run_data_import():
             # Step 5: Generate additional rich users
             print("\n" + "=" * 60)
-            print("👥 Generating additional users for collaborative filtering...")
+            print("Generating additional users for collaborative filtering...")
+            print("=" * 60)
+            
             if generate_rich_users():
-                print("Rich user profiles created!")
+                print("\nRich user profiles created!")
                 
                 # Step 6: Calculate book similarities
                 print("\n" + "=" * 60)
                 print("Calculating book similarities...")
+                print("=" * 60)
                 calculate_similarities()
                 
                 # Step 7: Calculate user similarities
                 print("\n" + "=" * 60)
                 print("Calculating user similarities...")
+                print("=" * 60)
                 calculate_user_similarities()
             else:
                 print("User generation failed - continuing anyway")
@@ -336,7 +337,8 @@ def main():
     
     # Step 9: Start Django server
     print("=" * 60)
-    print("✨ Initialization complete! Starting server...\n")
+    print("Initialization complete! Starting server...")
+    print("=" * 60)
     start_django_server()
 
 if __name__ == "__main__":
@@ -346,7 +348,7 @@ if __name__ == "__main__":
         print("\n\nInterrupted by user")
         sys.exit(0)
     except Exception as e:
-        print(f"\n\n❌ Unexpected error: {e}")
+        print(f"\n\nUnexpected error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
