@@ -310,9 +310,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
-            'full_name', 'date_joined', 'last_login'
+            'full_name', 'date_joined', 'last_login',
+            'is_staff', 'is_superuser'  
         ]
-        read_only_fields = ['id', 'username', 'date_joined', 'last_login']
+        read_only_fields = ['id', 'username', 'date_joined', 'last_login', 'is_staff', 'is_superuser']
 
 class ChangePasswordSerializer(serializers.Serializer):
     """Serializer for changing password"""

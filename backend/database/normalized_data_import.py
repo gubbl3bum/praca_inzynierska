@@ -532,35 +532,54 @@ def import_books_csv(csv_file_path):
 def create_admin_user():
     """Create administrative user"""
     
-    print("\nCREATING ADMIN USER")
+    print("\n👑 CREATING ADMIN USER")
     print("=" * 40)
     
     try:
-        # Check if the admin already exists
+        # Check if admin already exists
         if User.objects.filter(username='admin').exists():
             print("Admin user already exists")
+            admin_user = User.objects.get(username='admin')
+            
+            # ENSURE IS_STAFF AND IS_SUPERUSER ARE TRUE
+            if not admin_user.is_staff or not admin_user.is_superuser:
+                print("Fixing admin permissions...")
+                admin_user.is_staff = True
+                admin_user.is_superuser = True
+                admin_user.save()
+                print("Admin permissions fixed!")
+            
+            print(f"Email: {admin_user.email}")
             return True
         
-        # Create superuser
+        # Create superuser with ALL admin permissions
         admin_user = User.objects.create_superuser(
             username='admin',
             email='admin@wolfread.com',
-            password='admin123',  # TODO: change in production
+            password='admin123',
             first_name='Admin',
             last_name='User'
         )
         
+        # Double-check permissions are set
+        admin_user.is_staff = True
+        admin_user.is_superuser = True
+        admin_user.is_active = True
+        admin_user.save()
+        
         print(f"Admin user created: {admin_user.username}")
         print(f"Email: {admin_user.email}")
-        print("Password: admin123")
-        print("CHANGE PASSWORD IN PRODUCTION!")
+        print(f"Is Staff: {admin_user.is_staff}")
+        print(f"Is Superuser: {admin_user.is_superuser}")
         
         return True
         
     except Exception as e:
         print(f"Error creating admin user: {e}")
+        import traceback
+        traceback.print_exc()
         return False
-
+    
 def analyze_import_results():
     """Analyze import results and show statistics"""
     
