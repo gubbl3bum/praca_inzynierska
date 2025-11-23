@@ -355,6 +355,60 @@ def toggle_user_status(request, user_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['PUT'])
+@permission_classes([IsAdminUser])
+def update_user(request, user_id):
+    """
+    Update user details
+    """
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Prevent editing yourself
+        if user.id == request.user.id:
+            return Response({
+                'status': 'error',
+                'message': 'Cannot edit your own account through admin panel'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update allowed fields
+        if 'first_name' in request.data:
+            user.first_name = request.data['first_name']
+        if 'last_name' in request.data:
+            user.last_name = request.data['last_name']
+        if 'is_staff' in request.data:
+            user.is_staff = request.data['is_staff']
+        if 'is_active' in request.data:
+            user.is_active = request.data['is_active']
+        
+        user.save()
+        
+        return Response({
+            'status': 'success',
+            'message': 'User updated successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'is_staff': user.is_staff,
+                'is_active': user.is_active
+            }
+        })
+        
+    except User.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'User not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def system_health(request):
@@ -671,6 +725,46 @@ def delete_review(request, review_id):
             'status': 'success',
             'message': 'Review deleted successfully'
         })
+    except BookReview.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'Review not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAdminUser])
+def update_review(request, review_id):
+    """
+    Update review
+    """
+    try:
+        review = BookReview.objects.get(id=review_id)
+        
+        if 'rating' in request.data:
+            rating = int(request.data['rating'])
+            if not (1 <= rating <= 10):
+                return Response({
+                    'status': 'error',
+                    'message': 'Rating must be between 1 and 10'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            review.rating = rating
+        
+        if 'review_text' in request.data:
+            review.review_text = request.data['review_text']
+        
+        review.save()
+        
+        return Response({
+            'status': 'success',
+            'message': 'Review updated successfully'
+        })
+        
     except BookReview.DoesNotExist:
         return Response({
             'status': 'error',

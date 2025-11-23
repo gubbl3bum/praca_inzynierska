@@ -14,6 +14,7 @@ urlpatterns = [
     
     # User Management
     path('users/', views_admin.user_management_list, name='user_management_list'),
+    path('users/<int:user_id>/', views_admin.update_user, name='update_user'),  
     path('users/<int:user_id>/toggle-status/', views_admin.toggle_user_status, name='toggle_user_status'),
     
     # Books Management
@@ -22,7 +23,8 @@ urlpatterns = [
     
     # Reviews Management
     path('reviews/', views_admin.reviews_management, name='reviews_management'),
-    path('reviews/<int:review_id>/', views_admin.delete_review, name='delete_review'),
+    path('reviews/<int:review_id>/', views_admin.update_review, name='update_review'),  
+    path('reviews/<int:review_id>/', views_admin.delete_review, name='delete_review'),  
     
     # Badges Management
     path('badges/', views_admin.badges_management, name='badges_management'),
