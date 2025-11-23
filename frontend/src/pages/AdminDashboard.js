@@ -82,12 +82,12 @@ const AdminDashboard = () => {
 
       {/* Navigation Tabs */}
       <div className="max-w-7xl mx-auto px-4 py-4">
-        <div className="flex space-x-4 border-b border-gray-200">
-          {['dashboard', 'users', 'system'].map((tab) => (
+        <div className="flex space-x-4 border-b border-gray-200 overflow-x-auto">
+          {['dashboard', 'users', 'books', 'authors', 'publishers', 'reviews', 'badges', 'categories', 'system'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 font-medium capitalize ${
+              className={`px-4 py-2 font-medium capitalize whitespace-nowrap ${
                 activeTab === tab
                   ? 'border-b-2 border-blue-600 text-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
@@ -193,6 +193,24 @@ const AdminDashboard = () => {
 
         {/* Users Tab */}
         {activeTab === 'users' && <UserManagement />}
+
+        {/* Books Tab */}
+        {activeTab === 'books' && <BooksManagement />}
+
+        {/* Reviews Tab */}
+        {activeTab === 'reviews' && <ReviewsManagement />}
+
+        {/* Badges Tab */}
+        {activeTab === 'badges' && <BadgesManagement />}
+
+        {/* Categories Tab */}
+        {activeTab === 'categories' && <CategoriesManagement />}
+
+        {/* Authors Tab */}
+        {activeTab === 'authors' && <AuthorsManagement />}
+
+        {/* Publishers Tab */}
+        {activeTab === 'publishers' && <PublishersManagement />}
 
         {/* System Tab */}
         {activeTab === 'system' && health && (
@@ -717,6 +735,1325 @@ const UserManagement = () => {
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// BOOKS MANAGEMENT COMPONENT
+// =============================================================================
+
+const BooksManagement = () => {
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [filters, setFilters] = useState({
+    search: '',
+    category: '',
+    sort: '-created_at'
+  });
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    pageSize: 20
+  });
+  const [editingBook, setEditingBook] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedFilters(filters);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [filters]);
+
+  // Load books
+  useEffect(() => {
+    loadBooks(1);
+  }, [debouncedFilters]);
+
+  const loadBooks = async (page = 1) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params = {
+        page,
+        page_size: 20,
+        ...debouncedFilters
+      };
+
+      Object.keys(params).forEach(key => {
+        if (params[key] === '' || params[key] === null) {
+          delete params[key];
+        }
+      });
+
+      const data = await api.admin.getBooks(params);
+      setBooks(data.books || []);
+      
+      setPagination({
+        currentPage: data.pagination?.page || page,
+        totalPages: data.pagination?.total_pages || 1,
+        totalItems: data.pagination?.total || 0,
+        pageSize: data.pagination?.page_size || 20
+      });
+    } catch (error) {
+      console.error('Error loading books:', error);
+      setError(api.handleError(error, 'Failed to load books'));
+      setBooks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEdit = (book) => {
+    setEditingBook(book);
+    setShowEditModal(true);
+  };
+
+  const handleDelete = async (bookId) => {
+    if (!window.confirm('Are you sure you want to delete this book? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await api.admin.deleteBook(bookId);
+      alert('Book deleted successfully');
+      loadBooks(pagination.currentPage);
+    } catch (error) {
+      alert('Error: ' + (error.message || 'Failed to delete book'));
+    }
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      await api.admin.updateBook(editingBook.id, {
+        title: editingBook.title,
+        description: editingBook.description,
+        price: editingBook.price,
+        publish_year: editingBook.publish_year
+      });
+      
+      alert('Book updated successfully');
+      setShowEditModal(false);
+      setEditingBook(null);
+      loadBooks(pagination.currentPage);
+    } catch (error) {
+      alert('Error: ' + (error.message || 'Failed to update book'));
+    }
+  };
+
+  const handleFilterChange = (name, value) => {
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const resetFilters = () => {
+    setFilters({ search: '', category: '', sort: '-created_at' });
+  };
+
+  const handlePageChange = (newPage) => {
+    loadBooks(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const generatePageNumbers = () => {
+    return api.pagination.generatePageNumbers(pagination.currentPage, pagination.totalPages, 5);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4 text-gray-800">Search & Filter Books</h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search by title, description..."
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            {loading && filters.search && (
+              <div className="absolute right-3 top-3">
+                <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+              </div>
+            )}
+          </div>
+
+          <input
+            type="text"
+            placeholder="Category..."
+            value={filters.category}
+            onChange={(e) => handleFilterChange('category', e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          />
+
+          <button
+            onClick={resetFilters}
+            className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+          >
+            🔄 Reset
+          </button>
+        </div>
+      </div>
+
+      {/* Loading */}
+      {loading && (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading books...</p>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-800">{error}</p>
+        </div>
+      )}
+
+      {/* Results */}
+      {!loading && !error && (
+        <>
+          <div className="flex justify-between items-center">
+            <p className="text-gray-600">
+              Showing {books.length} of {pagination.totalItems.toLocaleString()} books
+            </p>
+          </div>
+
+          {books.length > 0 ? (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Authors</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Year</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reviews</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {books.map(book => (
+                    <tr key={book.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">{book.title}</div>
+                        {book.description && (
+                          <div className="text-sm text-gray-500 truncate max-w-xs">{book.description}</div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{book.authors || 'Unknown'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{book.publish_year || 'N/A'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{book.review_count || 0}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {book.avg_rating ? `${book.avg_rating}/10` : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium space-x-2">
+                        <button
+                          onClick={() => handleEdit(book)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(book.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow p-12 text-center">
+              <div className="text-6xl mb-4">📚</div>
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Books Found</h3>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {pagination.totalPages > 1 && (
+            <div className="flex justify-center items-center gap-2 py-6">
+              <button
+                onClick={() => handlePageChange(pagination.currentPage - 1)}
+                disabled={pagination.currentPage === 1}
+                className={`px-4 py-2 rounded-lg ${
+                  pagination.currentPage > 1
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                ← Previous
+              </button>
+
+              {generatePageNumbers().map(pageNum => (
+                <button
+                  key={pageNum}
+                  onClick={() => handlePageChange(pageNum)}
+                  className={`px-4 py-2 rounded-lg ${
+                    pageNum === pagination.currentPage
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-100 border'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              ))}
+
+              <button
+                onClick={() => handlePageChange(pagination.currentPage + 1)}
+                disabled={pagination.currentPage === pagination.totalPages}
+                className={`px-4 py-2 rounded-lg ${
+                  pagination.currentPage < pagination.totalPages
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && editingBook && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Edit Book</h3>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <input
+                  type="text"
+                  value={editingBook.title}
+                  onChange={(e) => setEditingBook({...editingBook, title: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={editingBook.description || ''}
+                  onChange={(e) => setEditingBook({...editingBook, description: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  rows="4"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editingBook.price || ''}
+                    onChange={(e) => setEditingBook({...editingBook, price: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                  <input
+                    type="number"
+                    value={editingBook.publish_year || ''}
+                    onChange={(e) => setEditingBook({...editingBook, publish_year: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingBook(null);
+                  }}
+                  className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// AUTHORS MANAGEMENT COMPONENT
+// =============================================================================
+
+const AuthorsManagement = () => {
+  const [authors, setAuthors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    pageSize: 20
+  });
+  const [editingAuthor, setEditingAuthor] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newAuthor, setNewAuthor] = useState({ first_name: '', last_name: '' });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 500);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    loadAuthors(1);
+  }, [debouncedSearch]);
+
+  const loadAuthors = async (page = 1) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api.admin.getAuthors({ search: debouncedSearch, page, page_size: 20 });
+      setAuthors(data.authors || []);
+      setPagination({
+        currentPage: data.pagination?.page || page,
+        totalPages: data.pagination?.total_pages || 1,
+        totalItems: data.pagination?.total || 0,
+        pageSize: data.pagination?.page_size || 20
+      });
+    } catch (error) {
+      setError(api.handleError(error, 'Failed to load authors'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    try {
+      await api.admin.createAuthor(newAuthor);
+      alert('Author created successfully');
+      setShowCreateModal(false);
+      setNewAuthor({ first_name: '', last_name: '' });
+      loadAuthors(1);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleEdit = (author) => {
+    setEditingAuthor(author);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.admin.updateAuthor(editingAuthor.id, {
+        first_name: editingAuthor.first_name,
+        last_name: editingAuthor.last_name
+      });
+      alert('Author updated successfully');
+      setShowEditModal(false);
+      setEditingAuthor(null);
+      loadAuthors(pagination.currentPage);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleDelete = async (authorId) => {
+    if (!window.confirm('Are you sure? This will fail if the author has books.')) return;
+    try {
+      await api.admin.deleteAuthor(authorId);
+      alert('Author deleted successfully');
+      loadAuthors(pagination.currentPage);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Authors Management</h2>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+        >
+          ➕ Add Author
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <input
+          type="text"
+          placeholder="Search authors..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-800">{error}</p>
+        </div>
+      ) : (
+        <>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Books</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {authors.map(author => (
+                  <tr key={author.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{author.full_name}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{author.book_count}</td>
+                    <td className="px-6 py-4 text-sm font-medium space-x-2">
+                      <button onClick={() => handleEdit(author)} className="text-blue-600 hover:text-blue-900">
+                        ✏️ Edit
+                      </button>
+                      <button onClick={() => handleDelete(author.id)} className="text-red-600 hover:text-red-900">
+                        🗑️ Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* Create Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Create New Author</h3>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                <input
+                  type="text"
+                  value={newAuthor.first_name}
+                  onChange={(e) => setNewAuthor({...newAuthor, first_name: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                <input
+                  type="text"
+                  value={newAuthor.last_name}
+                  onChange={(e) => setNewAuthor({...newAuthor, last_name: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-4">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="px-6 py-2 bg-gray-500 text-white rounded-lg">
+                  Cancel
+                </button>
+                <button type="submit" className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && editingAuthor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Edit Author</h3>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                <input
+                  type="text"
+                  value={editingAuthor.first_name}
+                  onChange={(e) => setEditingAuthor({...editingAuthor, first_name: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                <input
+                  type="text"
+                  value={editingAuthor.last_name}
+                  onChange={(e) => setEditingAuthor({...editingAuthor, last_name: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-4">
+                <button type="button" onClick={() => setShowEditModal(false)} className="px-6 py-2 bg-gray-500 text-white rounded-lg">
+                  Cancel
+                </button>
+                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// PUBLISHERS MANAGEMENT COMPONENT
+// =============================================================================
+
+const PublishersManagement = () => {
+  const [publishers, setPublishers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    pageSize: 20
+  });
+  const [editingPublisher, setEditingPublisher] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newPublisher, setNewPublisher] = useState({ name: '' });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 500);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    loadPublishers(1);
+  }, [debouncedSearch]);
+
+  const loadPublishers = async (page = 1) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api.admin.getPublishers({ search: debouncedSearch, page, page_size: 20 });
+      setPublishers(data.publishers || []);
+      setPagination({
+        currentPage: data.pagination?.page || page,
+        totalPages: data.pagination?.total_pages || 1,
+        totalItems: data.pagination?.total || 0,
+        pageSize: data.pagination?.page_size || 20
+      });
+    } catch (error) {
+      setError(api.handleError(error, 'Failed to load publishers'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    try {
+      await api.admin.createPublisher(newPublisher);
+      alert('Publisher created successfully');
+      setShowCreateModal(false);
+      setNewPublisher({ name: '' });
+      loadPublishers(1);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleEdit = (publisher) => {
+    setEditingPublisher(publisher);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.admin.updatePublisher(editingPublisher.id, { name: editingPublisher.name });
+      alert('Publisher updated successfully');
+      setShowEditModal(false);
+      setEditingPublisher(null);
+      loadPublishers(pagination.currentPage);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleDelete = async (publisherId) => {
+    if (!window.confirm('Are you sure? This will fail if the publisher has books.')) return;
+    try {
+      await api.admin.deletePublisher(publisherId);
+      alert('Publisher deleted successfully');
+      loadPublishers(pagination.currentPage);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Publishers Management</h2>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+        >
+          ➕ Add Publisher
+        </button>
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-6">
+        <input
+          type="text"
+          placeholder="Search publishers..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-800">{error}</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Books</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {publishers.map(publisher => (
+                <tr key={publisher.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{publisher.name}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{publisher.book_count}</td>
+                  <td className="px-6 py-4 text-sm font-medium space-x-2">
+                    <button onClick={() => handleEdit(publisher)} className="text-blue-600 hover:text-blue-900">
+                      ✏️ Edit
+                    </button>
+                    <button onClick={() => handleDelete(publisher.id)} className="text-red-600 hover:text-red-900">
+                      🗑️ Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Create Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Create New Publisher</h3>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={newPublisher.name}
+                  onChange={(e) => setNewPublisher({name: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-4">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="px-6 py-2 bg-gray-500 text-white rounded-lg">Cancel</button>
+                <button type="submit" className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && editingPublisher && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Edit Publisher</h3>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={editingPublisher.name}
+                  onChange={(e) => setEditingPublisher({...editingPublisher, name: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-4">
+                <button type="button" onClick={() => setShowEditModal(false)} className="px-6 py-2 bg-gray-500 text-white rounded-lg">Cancel</button>
+                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// REVIEWS MANAGEMENT COMPONENT
+// =============================================================================
+
+const ReviewsManagement = () => {
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [filters, setFilters] = useState({ search: '', rating: '' });
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    pageSize: 20
+  });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedFilters(filters), 500);
+    return () => clearTimeout(timer);
+  }, [filters]);
+
+  useEffect(() => {
+    loadReviews(1);
+  }, [debouncedFilters]);
+
+  const loadReviews = async (page = 1) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api.admin.getReviews({ ...debouncedFilters, page, page_size: 20 });
+      setReviews(data.reviews || []);
+      setPagination({
+        currentPage: data.pagination?.page || page,
+        totalPages: data.pagination?.total_pages || 1,
+        totalItems: data.pagination?.total || 0,
+        pageSize: data.pagination?.page_size || 20
+      });
+    } catch (error) {
+      setError(api.handleError(error, 'Failed to load reviews'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (reviewId) => {
+    if (!window.confirm('Are you sure you want to delete this review?')) return;
+    try {
+      await api.admin.deleteReview(reviewId);
+      alert('Review deleted successfully');
+      loadReviews(pagination.currentPage);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Reviews Management</h2>
+
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input
+            type="text"
+            placeholder="Search by user, book, or review text..."
+            value={filters.search}
+            onChange={(e) => setFilters({...filters, search: e.target.value})}
+            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+          />
+          <select
+            value={filters.rating}
+            onChange={(e) => setFilters({...filters, rating: e.target.value})}
+            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All Ratings</option>
+            {[10,9,8,7,6,5,4,3,2,1].map(r => <option key={r} value={r}>{r}/10</option>)}
+          </select>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-800">{error}</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Book</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Review</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {reviews.map(review => (
+                <tr key={review.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 text-sm text-gray-900">{review.user}</td>
+                  <td className="px-6 py-4 text-sm text-gray-900">{review.book}</td>
+                  <td className="px-6 py-4 text-sm">
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded">{review.rating}/10</span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{review.review_text || 'No text'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{new Date(review.created_at).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-sm font-medium">
+                    <button onClick={() => handleDelete(review.id)} className="text-red-600 hover:text-red-900">
+                      🗑️ Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// BADGES MANAGEMENT COMPONENT
+// =============================================================================
+
+const BadgesManagement = () => {
+  const [badges, setBadges] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [editingBadge, setEditingBadge] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  useEffect(() => {
+    loadBadges();
+  }, []);
+
+  const loadBadges = async () => {
+    try {
+      setLoading(true);
+      const data = await api.admin.getBadges();
+      setBadges(data.badges || []);
+    } catch (error) {
+      setError(api.handleError(error, 'Failed to load badges'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEdit = (badge) => {
+    setEditingBadge(badge);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.admin.updateBadge(editingBadge.id, editingBadge);
+      alert('Badge updated successfully');
+      setShowEditModal(false);
+      setEditingBadge(null);
+      loadBadges();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleDelete = async (badgeId) => {
+    if (!window.confirm('Are you sure you want to delete this badge?')) return;
+    try {
+      await api.admin.deleteBadge(badgeId);
+      alert('Badge deleted successfully');
+      loadBadges();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Badges Management</h2>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-800">{error}</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Badge</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rarity</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Requirement</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Users Earned</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {badges.map(badge => (
+                <tr key={badge.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center">
+                      <span className="text-2xl mr-2">{badge.icon}</span>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{badge.name}</div>
+                        <div className="text-sm text-gray-500">{badge.description}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{badge.category}</td>
+                  <td className="px-6 py-4 text-sm">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      badge.rarity === 'legendary' ? 'bg-yellow-100 text-yellow-800' :
+                      badge.rarity === 'epic' ? 'bg-purple-100 text-purple-800' :
+                      badge.rarity === 'rare' ? 'bg-blue-100 text-blue-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {badge.rarity}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    {badge.requirement_type}: {badge.requirement_value}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{badge.points}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{badge.users_earned}</td>
+                  <td className="px-6 py-4 text-sm font-medium space-x-2">
+                    <button onClick={() => handleEdit(badge)} className="text-blue-600 hover:text-blue-900">
+                      ✏️ Edit
+                    </button>
+                    <button onClick={() => handleDelete(badge.id)} className="text-red-600 hover:text-red-900">
+                      🗑️ Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && editingBadge && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Edit Badge</h3>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={editingBadge.name}
+                    onChange={(e) => setEditingBadge({...editingBadge, name: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
+                  <input
+                    type="text"
+                    value={editingBadge.icon}
+                    onChange={(e) => setEditingBadge({...editingBadge, icon: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={editingBadge.description}
+                  onChange={(e) => setEditingBadge({...editingBadge, description: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  rows="2"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                  <input
+                    type="number"
+                    value={editingBadge.points}
+                    onChange={(e) => setEditingBadge({...editingBadge, points: parseInt(e.target.value)})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Requirement Value</label>
+                  <input
+                    type="number"
+                    value={editingBadge.requirement_value}
+                    onChange={(e) => setEditingBadge({...editingBadge, requirement_value: parseInt(e.target.value)})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={editingBadge.is_active}
+                    onChange={(e) => setEditingBadge({...editingBadge, is_active: e.target.checked})}
+                    className="mr-2"
+                  />
+                  <span className="text-sm">Active</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={editingBadge.is_hidden}
+                    onChange={(e) => setEditingBadge({...editingBadge, is_hidden: e.target.checked})}
+                    className="mr-2"
+                  />
+                  <span className="text-sm">Hidden</span>
+                </label>
+              </div>
+              <div className="flex justify-end gap-4 mt-6">
+                <button type="button" onClick={() => setShowEditModal(false)} className="px-6 py-2 bg-gray-500 text-white rounded-lg">Cancel</button>
+                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// CATEGORIES MANAGEMENT COMPONENT
+// =============================================================================
+
+const CategoriesManagement = () => {
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newCategory, setNewCategory] = useState({ name: '' });
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const loadCategories = async () => {
+    try {
+      setLoading(true);
+      const data = await api.admin.getCategories();
+      setCategories(data.categories || []);
+    } catch (error) {
+      setError(api.handleError(error, 'Failed to load categories'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    try {
+      await api.admin.createCategory(newCategory);
+      alert('Category created successfully');
+      setShowCreateModal(false);
+      setNewCategory({ name: '' });
+      loadCategories();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleEdit = (category) => {
+    setEditingCategory(category);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.admin.updateCategory(editingCategory.id, { name: editingCategory.name });
+      alert('Category updated successfully');
+      setShowEditModal(false);
+      setEditingCategory(null);
+      loadCategories();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleDelete = async (categoryId) => {
+    if (!window.confirm('Are you sure? This will fail if the category has books.')) return;
+    try {
+      await api.admin.deleteCategory(categoryId);
+      alert('Category deleted successfully');
+      loadCategories();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Categories Management</h2>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+        >
+          ➕ Add Category
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-800">{error}</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Books</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {categories.map(category => (
+                <tr key={category.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{category.name}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{category.book_count}</td>
+                  <td className="px-6 py-4 text-sm font-medium space-x-2">
+                    <button onClick={() => handleEdit(category)} className="text-blue-600 hover:text-blue-900">
+                      ✏️ Edit
+                    </button>
+                    <button onClick={() => handleDelete(category.id)} className="text-red-600 hover:text-red-900">
+                      🗑️ Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Create Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Create New Category</h3>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={newCategory.name}
+                  onChange={(e) => setNewCategory({name: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-4">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="px-6 py-2 bg-gray-500 text-white rounded-lg">Cancel</button>
+                <button type="submit" className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && editingCategory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Edit Category</h3>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={editingCategory.name}
+                  onChange={(e) => setEditingCategory({...editingCategory, name: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-4">
+                <button type="button" onClick={() => setShowEditModal(false)} className="px-6 py-2 bg-gray-500 text-white rounded-lg">Cancel</button>
+                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
