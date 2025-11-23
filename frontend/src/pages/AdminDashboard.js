@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../services/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import ConfirmModal from '../components/ConfirmModal';
 
 const AdminDashboard = () => {
   const { user, isAuthenticated } = useAuth();
@@ -283,26 +284,19 @@ const UserManagement = () => {
     totalItems: 0,
     pageSize: 20
   });
+  const [editingUser, setEditingUser] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showToggleModal, setShowToggleModal] = useState(false);
+  const [userToToggle, setUserToToggle] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const sortOptions = [
-    { value: '-date_joined', label: 'Newest First' },
-    { value: 'date_joined', label: 'Oldest First' },
-    { value: 'username', label: 'Username A-Z' },
-    { value: '-username', label: 'Username Z-A' },
-    { value: '-review_count', label: 'Most Reviews' },
-    { value: 'review_count', label: 'Least Reviews' }
-  ];
-
-  // Debounce filters
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedFilters(filters);
     }, 500);
-
     return () => clearTimeout(timer);
   }, [filters]);
 
-  // Load users when debounced filters change
   useEffect(() => {
     loadUsers(1);
   }, [debouncedFilters]);
@@ -318,7 +312,6 @@ const UserManagement = () => {
         ...debouncedFilters
       };
 
-      // Remove empty filters
       Object.keys(params).forEach(key => {
         if (params[key] === '' || params[key] === null || params[key] === undefined) {
           delete params[key];
@@ -343,16 +336,51 @@ const UserManagement = () => {
     }
   };
 
-  const toggleUserStatus = async (userId) => {
-    if (!window.confirm('Are you sure you want to change this user\'s status?')) {
-      return;
-    }
+  const handleEdit = (user) => {
+    setEditingUser({
+      ...user,
+      first_name: user.first_name || '',
+      last_name: user.last_name || ''
+    });
+    setShowEditModal(true);
+  };
 
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    setIsProcessing(true);
     try {
-      await api.admin.toggleUserStatus(userId);
+      await api.admin.updateUser(editingUser.id, {
+        first_name: editingUser.first_name,
+        last_name: editingUser.last_name,
+        is_staff: editingUser.is_staff,
+        is_active: editingUser.is_active
+      });
+      setShowEditModal(false);
+      setEditingUser(null);
       loadUsers(pagination.currentPage);
     } catch (error) {
-      alert('Error: ' + (error.message || 'Failed to update user status'));
+      alert('Error: ' + error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleToggleClick = (user) => {
+    setUserToToggle(user);
+    setShowToggleModal(true);
+  };
+
+  const handleToggleConfirm = async () => {
+    setIsProcessing(true);
+    try {
+      await api.admin.toggleUserStatus(userToToggle.id);
+      setShowToggleModal(false);
+      setUserToToggle(null);
+      loadUsers(pagination.currentPage);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -386,13 +414,19 @@ const UserManagement = () => {
     return api.pagination.generatePageNumbers(pagination.currentPage, pagination.totalPages, 5);
   };
 
+  const sortOptions = [
+    { value: '-date_joined', label: 'Newest First' },
+    { value: 'date_joined', label: 'Oldest First' },
+    { value: 'username', label: 'Username A-Z' },
+    { value: '-username', label: 'Username Z-A' },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold mb-4 text-gray-800">Search & Filter Users</h2>
         
-        {/* Search */}
         <form onSubmit={handleSearch} className="mb-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
@@ -418,13 +452,9 @@ const UserManagement = () => {
           </div>
         </form>
 
-        {/* Other filters */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Has Reviews */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Review Status
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Review Status</label>
             <select
               value={filters.has_reviews}
               onChange={(e) => handleFilterChange('has_reviews', e.target.value)}
@@ -436,11 +466,8 @@ const UserManagement = () => {
             </select>
           </div>
 
-          {/* Is Active */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Account Status
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Account Status</label>
             <select
               value={filters.is_active}
               onChange={(e) => handleFilterChange('is_active', e.target.value)}
@@ -452,11 +479,8 @@ const UserManagement = () => {
             </select>
           </div>
 
-          {/* Sort */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Sort By
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
             <select
               value={filters.sort}
               onChange={(e) => handleFilterChange('sort', e.target.value)}
@@ -470,7 +494,6 @@ const UserManagement = () => {
             </select>
           </div>
 
-          {/* Reset */}
           <div className="flex items-end">
             <button
               onClick={resetFilters}
@@ -480,31 +503,9 @@ const UserManagement = () => {
             </button>
           </div>
         </div>
-
-        {/* Active filters display */}
-        {(filters.search || filters.has_reviews || filters.is_active) && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="text-sm text-gray-500">Active filters:</span>
-            {filters.search && (
-              <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
-                Search: "{filters.search}"
-              </span>
-            )}
-            {filters.has_reviews && (
-              <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
-                {filters.has_reviews === 'true' ? 'Has Reviews' : 'No Reviews'}
-              </span>
-            )}
-            {filters.is_active && (
-              <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-sm">
-                {filters.is_active === 'true' ? 'Active' : 'Inactive'}
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Loading */}
+      {/* Loading/Error */}
       {loading && (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
@@ -512,7 +513,6 @@ const UserManagement = () => {
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
           <div className="text-red-800 text-center">
@@ -529,140 +529,97 @@ const UserManagement = () => {
         </div>
       )}
 
-      {/* Results */}
-      {!loading && !error && (
+      {/* User table */}
+      {!loading && !error && users.length > 0 && (
         <>
-          {/* Results info */}
           <div className="flex justify-between items-center">
             <p className="text-gray-600">
-              {users.length > 0 ? (
-                <>
-                  Showing {((pagination.currentPage - 1) * pagination.pageSize) + 1}-{Math.min(pagination.currentPage * pagination.pageSize, pagination.totalItems)} of {pagination.totalItems.toLocaleString()} users
-                  {pagination.totalPages > 1 && (
-                    <> (page {pagination.currentPage} of {pagination.totalPages})</>
-                  )}
-                </>
-              ) : (
-                'No users found'
-              )}
+              Showing {((pagination.currentPage - 1) * pagination.pageSize) + 1}-{Math.min(pagination.currentPage * pagination.pageSize, pagination.totalItems)} of {pagination.totalItems.toLocaleString()} users
             </p>
           </div>
 
-          {/* User table */}
-          {users.length > 0 ? (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        User
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Email
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Reviews
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Joined
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reviews</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {users.map(user => (
+                    <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10">
+                            <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
+                              {user.username?.charAt(0)?.toUpperCase() || 'U'}
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {user.username}
+                              {user.is_staff && (
+                                <span className="ml-2 px-2 py-0.5 text-xs bg-purple-100 text-purple-800 rounded">Admin</span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-500">{user.full_name}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{user.email}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {user.review_count || 0}
+                          {user.avg_rating && (
+                            <span className="text-gray-500 ml-2">(avg: {user.avg_rating})</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(user.date_joined).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {user.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => handleEdit(user)}
+                              className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
+                            >
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              onClick={() => handleToggleClick(user)}
+                              disabled={loading}
+                              className="text-yellow-600 hover:text-yellow-900"
+                            >
+                              {user.is_active ? 'Deactivate' : 'Activate'}
+                            </button>
+                          </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {users.map(user => (
-                      <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
-                                {user.username?.charAt(0)?.toUpperCase() || 'U'}
-                              </div>
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">
-                                {user.username}
-                                {user.is_staff && (
-                                  <span className="ml-2 px-2 py-0.5 text-xs bg-purple-100 text-purple-800 rounded">
-                                    Admin
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-sm text-gray-500">{user.full_name}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{user.email}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {user.review_count || 0}
-                            {user.avg_rating && (
-                              <span className="text-gray-500 ml-2">
-                                (avg: {user.avg_rating})
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(user.date_joined).toLocaleDateString()}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            user.is_active 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {user.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button
-                            onClick={() => toggleUserStatus(user.id)}
-                            className="text-blue-600 hover:text-blue-900"
-                            disabled={loading}
-                          >
-                            {user.is_active ? 'Deactivate' : 'Activate'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow p-12 text-center">
-              <div className="text-6xl mb-4">👥</div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">
-                No Users Found
-              </h3>
-              <p className="text-gray-500 mb-4">
-                {filters.search || filters.has_reviews || filters.is_active
-                  ? 'Try adjusting your filters or search terms'
-                  : 'No users are available'
-                }
-              </p>
-              <button
-                onClick={resetFilters}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
-              >
-                Clear All Filters
-              </button>
-            </div>
-          )}
+          </div>
 
           {/* Pagination */}
           {pagination.totalPages > 1 && (
             <div className="flex justify-center items-center gap-2 py-6">
-              {/* Previous */}
               <button
                 onClick={() => handlePageChange(pagination.currentPage - 1)}
                 disabled={pagination.currentPage === 1}
@@ -675,7 +632,6 @@ const UserManagement = () => {
                 ← Previous
               </button>
 
-              {/* First page */}
               {pagination.currentPage > 3 && (
                 <>
                   <button
@@ -684,13 +640,10 @@ const UserManagement = () => {
                   >
                     1
                   </button>
-                  {pagination.currentPage > 4 && (
-                    <span className="px-2 text-gray-500">...</span>
-                  )}
+                  {pagination.currentPage > 4 && <span className="px-2 text-gray-500">...</span>}
                 </>
               )}
 
-              {/* Page numbers */}
               {generatePageNumbers().map(pageNum => (
                 <button
                   key={pageNum}
@@ -705,12 +658,9 @@ const UserManagement = () => {
                 </button>
               ))}
 
-              {/* Last page */}
               {pagination.currentPage < pagination.totalPages - 2 && (
                 <>
-                  {pagination.currentPage < pagination.totalPages - 3 && (
-                    <span className="px-2 text-gray-500">...</span>
-                  )}
+                  {pagination.currentPage < pagination.totalPages - 3 && <span className="px-2 text-gray-500">...</span>}
                   <button
                     onClick={() => handlePageChange(pagination.totalPages)}
                     className="px-4 py-2 rounded-lg bg-white text-gray-700 hover:bg-gray-100 border border-gray-300"
@@ -720,7 +670,6 @@ const UserManagement = () => {
                 </>
               )}
 
-              {/* Next */}
               <button
                 onClick={() => handlePageChange(pagination.currentPage + 1)}
                 disabled={pagination.currentPage === pagination.totalPages}
@@ -736,6 +685,118 @@ const UserManagement = () => {
           )}
         </>
       )}
+
+      {/* Edit User Modal */}
+      {showEditModal && editingUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Edit User</h3>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                <input
+                  type="text"
+                  value={editingUser.username}
+                  disabled
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-600"
+                />
+                <p className="text-xs text-gray-500 mt-1">Username cannot be changed</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={editingUser.email}
+                  disabled
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-600"
+                />
+                <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                  <input
+                    type="text"
+                    value={editingUser.first_name}
+                    onChange={(e) => setEditingUser({...editingUser, first_name: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                  <input
+                    type="text"
+                    value={editingUser.last_name}
+                    onChange={(e) => setEditingUser({...editingUser, last_name: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-6">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={editingUser.is_staff}
+                    onChange={(e) => setEditingUser({...editingUser, is_staff: e.target.checked})}
+                    className="mr-2 w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Staff / Admin</span>
+                </label>
+
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={editingUser.is_active}
+                    onChange={(e) => setEditingUser({...editingUser, is_active: e.target.checked})}
+                    className="mr-2 w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Active</span>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingUser(null);
+                  }}
+                  disabled={isProcessing}
+                  className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 disabled:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
+                >
+                  {isProcessing ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Toggle Status Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showToggleModal}
+        onClose={() => {
+          setShowToggleModal(false);
+          setUserToToggle(null);
+        }}
+        onConfirm={handleToggleConfirm}
+        title={`${userToToggle?.is_active ? 'Deactivate' : 'Activate'} User`}
+        message={`Are you sure you want to ${userToToggle?.is_active ? 'deactivate' : 'activate'} user "${userToToggle?.username}"?`}
+        confirmText={userToToggle?.is_active ? 'Deactivate' : 'Activate'}
+        confirmColor={userToToggle?.is_active ? 'yellow' : 'green'}
+        isProcessing={isProcessing}
+      />
     </div>
   );
 };
@@ -958,19 +1019,21 @@ const BooksManagement = () => {
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {book.avg_rating ? `${book.avg_rating}/10` : 'N/A'}
                       </td>
-                      <td className="px-6 py-4 text-sm font-medium space-x-2">
-                        <button
-                          onClick={() => handleEdit(book)}
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          ✏️ Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(book.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          🗑️ Delete
-                        </button>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => handleEdit(book)}
+                            className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
+                          >
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(book.id)}
+                            className="text-red-600 hover:text-red-900 inline-flex items-center gap-1"
+                          >
+                            <span>Delete</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1247,13 +1310,22 @@ const AuthorsManagement = () => {
                   <tr key={author.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{author.full_name}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{author.book_count}</td>
-                    <td className="px-6 py-4 text-sm font-medium space-x-2">
-                      <button onClick={() => handleEdit(author)} className="text-blue-600 hover:text-blue-900">
-                        ✏️ Edit
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleEdit(author)}
+                        className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
+                      >
+                        <span>Edit</span>
                       </button>
-                      <button onClick={() => handleDelete(author.id)} className="text-red-600 hover:text-red-900">
-                        🗑️ Delete
+
+                      <button
+                        onClick={() => handleDelete(author.id)}
+                        className="text-red-600 hover:text-red-900 inline-flex items-center gap-1"
+                      >
+                        <span>Delete</span>
                       </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1478,13 +1550,22 @@ const PublishersManagement = () => {
                 <tr key={publisher.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{publisher.name}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{publisher.book_count}</td>
-                  <td className="px-6 py-4 text-sm font-medium space-x-2">
-                    <button onClick={() => handleEdit(publisher)} className="text-blue-600 hover:text-blue-900">
-                      ✏️ Edit
-                    </button>
-                    <button onClick={() => handleDelete(publisher.id)} className="text-red-600 hover:text-red-900">
-                      🗑️ Delete
-                    </button>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleEdit(publisher)}
+                        className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
+                      >
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDelete(publisher.id)}
+                        className="text-red-600 hover:text-red-900 inline-flex items-center gap-1"
+                      >
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1562,6 +1643,11 @@ const ReviewsManagement = () => {
     totalItems: 0,
     pageSize: 20
   });
+  const [editingReview, setEditingReview] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [reviewToDelete, setReviewToDelete] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedFilters(filters), 500);
@@ -1591,14 +1677,45 @@ const ReviewsManagement = () => {
     }
   };
 
-  const handleDelete = async (reviewId) => {
-    if (!window.confirm('Are you sure you want to delete this review?')) return;
+  const handleEdit = (review) => {
+    setEditingReview(review);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    setIsProcessing(true);
     try {
-      await api.admin.deleteReview(reviewId);
-      alert('Review deleted successfully');
+      await api.admin.updateReview(editingReview.id, {
+        rating: editingReview.rating,
+        review_text: editingReview.review_text
+      });
+      setShowEditModal(false);
+      setEditingReview(null);
       loadReviews(pagination.currentPage);
     } catch (error) {
       alert('Error: ' + error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteClick = (review) => {
+    setReviewToDelete(review);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    setIsProcessing(true);
+    try {
+      await api.admin.deleteReview(reviewToDelete.id);
+      setShowDeleteModal(false);
+      setReviewToDelete(null);
+      loadReviews(pagination.currentPage);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -1651,16 +1768,34 @@ const ReviewsManagement = () => {
               {reviews.map(review => (
                 <tr key={review.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm text-gray-900">{review.user}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{review.book}</td>
+                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">{review.book}</td>
                   <td className="px-6 py-4 text-sm">
-                    <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded">{review.rating}/10</span>
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded font-medium">
+                      {review.rating}/10
+                    </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{review.review_text || 'No text'}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{new Date(review.created_at).toLocaleDateString()}</td>
-                  <td className="px-6 py-4 text-sm font-medium">
-                    <button onClick={() => handleDelete(review.id)} className="text-red-600 hover:text-red-900">
-                      🗑️ Delete
-                    </button>
+                  <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                    {review.review_text || <span className="text-gray-400 italic">No text</span>}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
+                    {new Date(review.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-3">
+                        <button
+                        onClick={() => handleEdit(review)}
+                        className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
+                      >
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteClick(review)}
+                        className="text-red-600 hover:text-red-900 inline-flex items-center gap-1"
+                      >
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1668,6 +1803,96 @@ const ReviewsManagement = () => {
           </table>
         </div>
       )}
+
+      {/* Edit Modal */}
+      {showEditModal && editingReview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Edit Review</h3>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">User</label>
+                <input
+                  type="text"
+                  value={editingReview.user}
+                  disabled
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Book</label>
+                <input
+                  type="text"
+                  value={editingReview.book}
+                  disabled
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Rating (1-10) *</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={editingReview.rating}
+                  onChange={(e) => setEditingReview({...editingReview, rating: parseInt(e.target.value)})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Review Text</label>
+                <textarea
+                  value={editingReview.review_text || ''}
+                  onChange={(e) => setEditingReview({...editingReview, review_text: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  rows="4"
+                  placeholder="Review text (optional)"
+                />
+              </div>
+
+              <div className="flex justify-end gap-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingReview(null);
+                  }}
+                  disabled={isProcessing}
+                  className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 disabled:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
+                >
+                  {isProcessing ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setReviewToDelete(null);
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Review"
+        message={`Are you sure you want to delete this review by ${reviewToDelete?.user} for "${reviewToDelete?.book}"?`}
+        confirmText="Delete"
+        confirmColor="red"
+        isProcessing={isProcessing}
+      />
     </div>
   );
 };
@@ -1682,6 +1907,26 @@ const BadgesManagement = () => {
   const [error, setError] = useState(null);
   const [editingBadge, setEditingBadge] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [badgeToDelete, setBadgeToDelete] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const rarityOptions = [
+    { value: 'common', label: 'Common', color: 'bg-gray-100 text-gray-800' },
+    { value: 'rare', label: 'Rare', color: 'bg-blue-100 text-blue-800' },
+    { value: 'epic', label: 'Epic', color: 'bg-purple-100 text-purple-800' },
+    { value: 'legendary', label: 'Legendary', color: 'bg-yellow-100 text-yellow-800' }
+  ];
+
+  const categoryOptions = [
+    { value: 'reviews', label: 'Reviews' },
+    { value: 'reading', label: 'Reading' },
+    { value: 'collections', label: 'Collections' },
+    { value: 'discovery', label: 'Discovery' },
+    { value: 'social', label: 'Social' },
+    { value: 'time', label: 'Time-based' },
+    { value: 'special', label: 'Special' }
+  ];
 
   useEffect(() => {
     loadBadges();
@@ -1706,25 +1951,35 @@ const BadgesManagement = () => {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
+    setIsProcessing(true);
     try {
       await api.admin.updateBadge(editingBadge.id, editingBadge);
-      alert('Badge updated successfully');
       setShowEditModal(false);
       setEditingBadge(null);
       loadBadges();
     } catch (error) {
       alert('Error: ' + error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleDelete = async (badgeId) => {
-    if (!window.confirm('Are you sure you want to delete this badge?')) return;
+  const handleDeleteClick = (badge) => {
+    setBadgeToDelete(badge);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    setIsProcessing(true);
     try {
-      await api.admin.deleteBadge(badgeId);
-      alert('Badge deleted successfully');
+      await api.admin.deleteBadge(badgeToDelete.id);
+      setShowDeleteModal(false);
+      setBadgeToDelete(null);
       loadBadges();
     } catch (error) {
       alert('Error: ' + error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -1750,6 +2005,7 @@ const BadgesManagement = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rarity</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Requirement</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Users Earned</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
@@ -1762,13 +2018,13 @@ const BadgesManagement = () => {
                       <span className="text-2xl mr-2">{badge.icon}</span>
                       <div>
                         <div className="text-sm font-medium text-gray-900">{badge.name}</div>
-                        <div className="text-sm text-gray-500">{badge.description}</div>
+                        <div className="text-sm text-gray-500 truncate max-w-xs">{badge.description}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{badge.category}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500 capitalize">{badge.category}</td>
                   <td className="px-6 py-4 text-sm">
-                    <span className={`px-2 py-1 rounded text-xs ${
+                    <span className={`px-2 py-1 rounded text-xs capitalize ${
                       badge.rarity === 'legendary' ? 'bg-yellow-100 text-yellow-800' :
                       badge.rarity === 'epic' ? 'bg-purple-100 text-purple-800' :
                       badge.rarity === 'rare' ? 'bg-blue-100 text-blue-800' :
@@ -1781,14 +2037,34 @@ const BadgesManagement = () => {
                     {badge.requirement_type}: {badge.requirement_value}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500">{badge.points}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      badge.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {badge.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                    {badge.is_hidden && (
+                      <span className="ml-2 px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">
+                        Hidden
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-sm text-gray-500">{badge.users_earned}</td>
-                  <td className="px-6 py-4 text-sm font-medium space-x-2">
-                    <button onClick={() => handleEdit(badge)} className="text-blue-600 hover:text-blue-900">
-                      ✏️ Edit
-                    </button>
-                    <button onClick={() => handleDelete(badge.id)} className="text-red-600 hover:text-red-900">
-                      🗑️ Delete
-                    </button>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => handleEdit(badge)} 
+                        className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
+                      >
+                        <span>Edit</span>
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteClick(badge)} 
+                        className="text-red-600 hover:text-red-900 inline-flex items-center gap-1"
+                      >
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1805,7 +2081,7 @@ const BadgesManagement = () => {
             <form onSubmit={handleSaveEdit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
                   <input
                     type="text"
                     value={editingBadge.name}
@@ -1821,66 +2097,149 @@ const BadgesManagement = () => {
                     value={editingBadge.icon}
                     onChange={(e) => setEditingBadge({...editingBadge, icon: e.target.value})}
                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="🏆"
                   />
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
                 <textarea
                   value={editingBadge.description}
                   onChange={(e) => setEditingBadge({...editingBadge, description: e.target.value})}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   rows="2"
+                  required
                 />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                  <select
+                    value={editingBadge.category}
+                    onChange={(e) => setEditingBadge({...editingBadge, category: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    {categoryOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Rarity *</label>
+                  <select
+                    value={editingBadge.rarity}
+                    onChange={(e) => setEditingBadge({...editingBadge, rarity: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    {rarityOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Points *</label>
                   <input
                     type="number"
                     value={editingBadge.points}
                     onChange={(e) => setEditingBadge({...editingBadge, points: parseInt(e.target.value)})}
                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                    min="0"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Requirement Value</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Requirement Value *</label>
                   <input
                     type="number"
                     value={editingBadge.requirement_value}
                     onChange={(e) => setEditingBadge({...editingBadge, requirement_value: parseInt(e.target.value)})}
                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                    min="0"
                   />
                 </div>
               </div>
-              <div className="flex items-center space-x-4">
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Requirement Type *</label>
+                <input
+                  type="text"
+                  value={editingBadge.requirement_type}
+                  onChange={(e) => setEditingBadge({...editingBadge, requirement_type: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., review_count, books_read"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center space-x-6">
                 <label className="flex items-center">
                   <input
                     type="checkbox"
                     checked={editingBadge.is_active}
                     onChange={(e) => setEditingBadge({...editingBadge, is_active: e.target.checked})}
-                    className="mr-2"
+                    className="mr-2 w-4 h-4"
                   />
-                  <span className="text-sm">Active</span>
+                  <span className="text-sm font-medium text-gray-700">Active</span>
                 </label>
                 <label className="flex items-center">
                   <input
                     type="checkbox"
                     checked={editingBadge.is_hidden}
                     onChange={(e) => setEditingBadge({...editingBadge, is_hidden: e.target.checked})}
-                    className="mr-2"
+                    className="mr-2 w-4 h-4"
                   />
-                  <span className="text-sm">Hidden</span>
+                  <span className="text-sm font-medium text-gray-700">Hidden</span>
                 </label>
               </div>
+
               <div className="flex justify-end gap-4 mt-6">
-                <button type="button" onClick={() => setShowEditModal(false)} className="px-6 py-2 bg-gray-500 text-white rounded-lg">Cancel</button>
-                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save</button>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingBadge(null);
+                  }} 
+                  disabled={isProcessing}
+                  className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 disabled:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isProcessing}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
+                >
+                  {isProcessing ? 'Saving...' : 'Save Changes'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setBadgeToDelete(null);
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Badge"
+        message={`Are you sure you want to delete "${badgeToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        confirmColor="red"
+        isProcessing={isProcessing}
+      />
     </div>
   );
 };
@@ -1964,7 +2323,7 @@ const CategoriesManagement = () => {
           onClick={() => setShowCreateModal(true)}
           className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
         >
-          ➕ Add Category
+          + Add Category
         </button>
       </div>
 
@@ -1991,13 +2350,15 @@ const CategoriesManagement = () => {
                 <tr key={category.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{category.name}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{category.book_count}</td>
-                  <td className="px-6 py-4 text-sm font-medium space-x-2">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-3">
                     <button onClick={() => handleEdit(category)} className="text-blue-600 hover:text-blue-900">
-                      ✏️ Edit
+                      Edit
                     </button>
                     <button onClick={() => handleDelete(category.id)} className="text-red-600 hover:text-red-900">
-                      🗑️ Delete
+                      Delete
                     </button>
+                    </div>
                   </td>
                 </tr>
               ))}
