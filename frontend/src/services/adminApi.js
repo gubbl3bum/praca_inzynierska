@@ -57,6 +57,16 @@ const adminApi = {
     return response.json();
   },
 
+  updateUser: async (userId, data) => {
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Failed to update user');
+    return response.json();
+  },
+
   toggleUserStatus: async (userId) => {
     const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/toggle-status/`, {
       method: 'POST',
@@ -114,6 +124,16 @@ const adminApi = {
       headers: getAuthHeaders()
     });
     if (!response.ok) throw new Error('Failed to fetch reviews');
+    return response.json();
+  },
+
+  updateReview: async (reviewId, data) => {
+    const response = await fetch(`${API_BASE_URL}/admin/reviews/${reviewId}/`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Failed to update review');
     return response.json();
   },
 
