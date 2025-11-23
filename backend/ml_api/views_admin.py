@@ -127,6 +127,7 @@ def recalculate_book_similarities(request):
     try:
         book_id = request.data.get('book_id')
         batch_size = int(request.data.get('batch_size', 50))
+        recalculate_all = request.data.get('recalculate_all', False) 
         
         service = get_similarity_service()
         
@@ -147,20 +148,32 @@ def recalculate_book_similarities(request):
                     'message': 'Book not found'
                 }, status=status.HTTP_404_NOT_FOUND)
         else:
-            # All books (limited for safety)
-            limit = int(request.data.get('limit', 10))
-            books = Book.objects.all()[:limit]
-            
-            total_count = 0
-            for book in books:
-                count = service.calculate_similarities_for_book(book, batch_size=batch_size)
-                total_count += count
-            
-            return Response({
-                'status': 'success',
-                'message': f'Recalculated similarities for {len(books)} books',
-                'total_similarities_created': total_count
-            })
+            if recalculate_all:
+                # All books
+                print("Recalculating ALL book similarities...")
+                total_count = service.calculate_all_similarities(batch_size=batch_size)
+                
+                return Response({
+                    'status': 'success',
+                    'message': f'Recalculated similarities for ALL books',
+                    'total_similarities_created': total_count
+                })
+            else:
+                # Just firsy 10 (safe mode)
+                limit = int(request.data.get('limit', 10))
+                books = Book.objects.all()[:limit]
+                
+                total_count = 0
+                for book in books:
+                    count = service.calculate_similarities_for_book(book, batch_size=batch_size)
+                    total_count += count
+                
+                return Response({
+                    'status': 'success',
+                    'message': f'Recalculated similarities for {len(books)} books (limited mode)',
+                    'total_similarities_created': total_count,
+                    'note': 'Use recalculate_all=true to process all books'
+                })
             
     except Exception as e:
         return Response({
@@ -178,6 +191,7 @@ def recalculate_user_similarities(request):
     try:
         user_id = request.data.get('user_id')
         batch_size = int(request.data.get('batch_size', 50))
+        recalculate_all = request.data.get('recalculate_all', False)  
         
         service = get_user_similarity_service()
         
@@ -198,29 +212,40 @@ def recalculate_user_similarities(request):
                     'message': 'User not found'
                 }, status=status.HTTP_404_NOT_FOUND)
         else:
-            # All users (limited for safety)
-            limit = int(request.data.get('limit', 10))
-            users = User.objects.filter(
-                Q(reviews__isnull=False) | Q(preference_profile__isnull=False)
-            ).distinct()[:limit]
-            
-            total_count = 0
-            for user in users:
-                count = service.calculate_similarities_for_user(user)
-                total_count += count
-            
-            return Response({
-                'status': 'success',
-                'message': f'Recalculated similarities for {len(users)} users',
-                'total_similarities_created': total_count
-            })
+            if recalculate_all:
+                print("Recalculating ALL user similarities...")
+                total_count = service.calculate_all_similarities(batch_size=batch_size)
+                
+                return Response({
+                    'status': 'success',
+                    'message': f'Recalculated similarities for ALL users',
+                    'total_similarities_created': total_count
+                })
+            else:
+                # Just first 10 (safe mode)
+                limit = int(request.data.get('limit', 10))
+                users = User.objects.filter(
+                    Q(reviews__isnull=False) | Q(preference_profile__isnull=False)
+                ).distinct()[:limit]
+                
+                total_count = 0
+                for user in users:
+                    count = service.calculate_similarities_for_user(user)
+                    total_count += count
+                
+                return Response({
+                    'status': 'success',
+                    'message': f'Recalculated similarities for {len(users)} users (limited mode)',
+                    'total_similarities_created': total_count,
+                    'note': 'Use recalculate_all=true to process all users'
+                })
             
     except Exception as e:
         return Response({
             'status': 'error',
             'message': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
 
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
@@ -396,3 +421,840 @@ def system_health(request):
                 'issues': [str(e)]
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# =============================================================================
+# BOOKS MANAGEMENT
+# =============================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def books_management(request):
+    """
+    GET: List books with filtering
+    POST: Create new book
+    """
+    if request.method == 'GET':
+        books = Book.objects.all()
+        
+        # Search
+        search = request.GET.get('search')
+        if search:
+            books = books.filter(
+                Q(title__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        # Filter by category
+        category = request.GET.get('category')
+        if category:
+            books = books.filter(categories__name__icontains=category)
+        
+        # Annotate
+        books = books.annotate(
+            review_count=Count('reviews'),
+            avg_rating=Avg('reviews__rating')
+        ).distinct().order_by('-created_at')
+        
+        # Pagination
+        page = int(request.GET.get('page', 1))
+        page_size = int(request.GET.get('page_size', 20))
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        total = books.count()
+        paginated_books = books[start:end]
+        
+        book_data = []
+        for book in paginated_books:
+            book_data.append({
+                'id': book.id,
+                'title': book.title,
+                'authors': book.author_names,
+                'description': book.description[:100] + '...' if book.description and len(book.description) > 100 else book.description,
+                'price': str(book.price) if book.price else None,
+                'publish_year': book.publish_year,
+                'review_count': book.review_count,
+                'avg_rating': round(book.avg_rating, 2) if book.avg_rating else None,
+                'created_at': book.created_at,
+            })
+        
+        return Response({
+            'status': 'success',
+            'books': book_data,
+            'pagination': {
+                'page': page,
+                'page_size': page_size,
+                'total': total,
+                'total_pages': (total + page_size - 1) // page_size
+            }
+        })
+    
+    elif request.method == 'POST':
+        # Create new book (simplified)
+        try:
+            title = request.data.get('title')
+            if not title:
+                return Response({
+                    'status': 'error',
+                    'message': 'Title is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            book = Book.objects.create(
+                title=title,
+                description=request.data.get('description', ''),
+                price=request.data.get('price'),
+                publish_year=request.data.get('publish_year'),
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': 'Book created successfully',
+                'book': {
+                    'id': book.id,
+                    'title': book.title
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAdminUser])
+def book_detail(request, book_id):
+    """
+    GET: Get book details
+    PUT: Update book
+    DELETE: Delete book
+    """
+    try:
+        book = Book.objects.get(id=book_id)
+    except Book.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'Book not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        return Response({
+            'status': 'success',
+            'book': {
+                'id': book.id,
+                'title': book.title,
+                'description': book.description,
+                'price': str(book.price) if book.price else None,
+                'publish_year': book.publish_year,
+                'isbn': book.isbn,
+                'authors': book.author_names,
+                'review_count': book.reviews.count(),
+                'avg_rating': book.average_rating,
+            }
+        })
+    
+    elif request.method == 'PUT':
+        try:
+            if 'title' in request.data:
+                book.title = request.data['title']
+            if 'description' in request.data:
+                book.description = request.data['description']
+            if 'price' in request.data:
+                book.price = request.data['price']
+            if 'publish_year' in request.data:
+                book.publish_year = request.data['publish_year']
+            
+            book.save()
+            
+            return Response({
+                'status': 'success',
+                'message': 'Book updated successfully',
+                'book': {
+                    'id': book.id,
+                    'title': book.title
+                }
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'DELETE':
+        try:
+            book.delete()
+            return Response({
+                'status': 'success',
+                'message': 'Book deleted successfully'
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =============================================================================
+# REVIEWS MANAGEMENT
+# =============================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def reviews_management(request):
+    """
+    List all reviews with filtering
+    """
+    reviews = BookReview.objects.select_related('user', 'book').all()
+    
+    # Search by user or book
+    search = request.GET.get('search')
+    if search:
+        reviews = reviews.filter(
+            Q(user__username__icontains=search) |
+            Q(book__title__icontains=search) |
+            Q(review_text__icontains=search)
+        )
+    
+    # Filter by rating
+    rating = request.GET.get('rating')
+    if rating:
+        reviews = reviews.filter(rating=int(rating))
+    
+    reviews = reviews.order_by('-created_at')
+    
+    # Pagination
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 20))
+    start = (page - 1) * page_size
+    end = start + page_size
+    
+    total = reviews.count()
+    paginated_reviews = reviews[start:end]
+    
+    review_data = []
+    for review in paginated_reviews:
+        review_data.append({
+            'id': review.id,
+            'user': review.user.username,
+            'user_id': review.user.id,
+            'book': review.book.title,
+            'book_id': review.book.id,
+            'rating': review.rating,
+            'review_text': review.review_text[:100] + '...' if review.review_text and len(review.review_text) > 100 else review.review_text,
+            'created_at': review.created_at,
+        })
+    
+    return Response({
+        'status': 'success',
+        'reviews': review_data,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'total_pages': (total + page_size - 1) // page_size
+        }
+    })
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminUser])
+def delete_review(request, review_id):
+    """
+    Delete a review
+    """
+    try:
+        review = BookReview.objects.get(id=review_id)
+        review.delete()
+        
+        return Response({
+            'status': 'success',
+            'message': 'Review deleted successfully'
+        })
+    except BookReview.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'Review not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =============================================================================
+# BADGES MANAGEMENT
+# =============================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def badges_management(request):
+    """
+    GET: List all badges
+    POST: Create new badge
+    """
+    if request.method == 'GET':
+        badges = Badge.objects.all().order_by('category', 'order')
+        
+        badge_data = []
+        for badge in badges:
+            badge_data.append({
+                'id': badge.id,
+                'name': badge.name,
+                'slug': badge.slug,
+                'icon': badge.icon,
+                'description': badge.description,
+                'category': badge.category,
+                'rarity': badge.rarity,
+                'requirement_type': badge.requirement_type,
+                'requirement_value': badge.requirement_value,
+                'points': badge.points,
+                'is_active': badge.is_active,
+                'is_hidden': badge.is_hidden,
+                'users_earned': UserBadge.objects.filter(badge=badge, completed=True).count()
+            })
+        
+        return Response({
+            'status': 'success',
+            'badges': badge_data,
+            'total': len(badge_data)
+        })
+    
+    elif request.method == 'POST':
+        try:
+            badge = Badge.objects.create(
+                name=request.data['name'],
+                slug=request.data['slug'],
+                description=request.data['description'],
+                icon=request.data.get('icon', '🏆'),
+                category=request.data['category'],
+                rarity=request.data.get('rarity', 'common'),
+                requirement_type=request.data['requirement_type'],
+                requirement_value=request.data['requirement_value'],
+                points=request.data.get('points', 10),
+                is_active=request.data.get('is_active', True),
+                is_hidden=request.data.get('is_hidden', False),
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': 'Badge created successfully',
+                'badge': {
+                    'id': badge.id,
+                    'name': badge.name
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAdminUser])
+def badge_detail(request, badge_id):
+    """
+    GET: Get badge details
+    PUT: Update badge
+    DELETE: Delete badge
+    """
+    try:
+        badge = Badge.objects.get(id=badge_id)
+    except Badge.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'Badge not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        return Response({
+            'status': 'success',
+            'badge': {
+                'id': badge.id,
+                'name': badge.name,
+                'slug': badge.slug,
+                'description': badge.description,
+                'icon': badge.icon,
+                'category': badge.category,
+                'rarity': badge.rarity,
+                'requirement_type': badge.requirement_type,
+                'requirement_value': badge.requirement_value,
+                'points': badge.points,
+                'is_active': badge.is_active,
+                'is_hidden': badge.is_hidden,
+            }
+        })
+    
+    elif request.method == 'PUT':
+        try:
+            for field in ['name', 'description', 'icon', 'category', 'rarity', 
+                         'requirement_type', 'requirement_value', 'points', 
+                         'is_active', 'is_hidden']:
+                if field in request.data:
+                    setattr(badge, field, request.data[field])
+            
+            badge.save()
+            
+            return Response({
+                'status': 'success',
+                'message': 'Badge updated successfully'
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'DELETE':
+        try:
+            badge.delete()
+            return Response({
+                'status': 'success',
+                'message': 'Badge deleted successfully'
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =============================================================================
+# CATEGORIES MANAGEMENT
+# =============================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def categories_management(request):
+    """
+    GET: List all categories
+    POST: Create new category
+    """
+    if request.method == 'GET':
+        categories = Category.objects.annotate(
+            book_count=Count('books')
+        ).order_by('name')
+        
+        category_data = []
+        for cat in categories:
+            category_data.append({
+                'id': cat.id,
+                'name': cat.name,
+                'book_count': cat.book_count,
+                'created_at': cat.created_at,
+            })
+        
+        return Response({
+            'status': 'success',
+            'categories': category_data,
+            'total': len(category_data)
+        })
+    
+    elif request.method == 'POST':
+        try:
+            name = request.data.get('name')
+            if not name:
+                return Response({
+                    'status': 'error',
+                    'message': 'Name is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if Category.objects.filter(name=name).exists():
+                return Response({
+                    'status': 'error',
+                    'message': 'Category already exists'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            category = Category.objects.create(name=name)
+            
+            return Response({
+                'status': 'success',
+                'message': 'Category created successfully',
+                'category': {
+                    'id': category.id,
+                    'name': category.name
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT', 'DELETE'])
+@permission_classes([IsAdminUser])
+def category_detail(request, category_id):
+    """
+    PUT: Update category
+    DELETE: Delete category
+    """
+    try:
+        category = Category.objects.get(id=category_id)
+    except Category.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'Category not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'PUT':
+        try:
+            name = request.data.get('name')
+            if name:
+                category.name = name
+                category.save()
+            
+            return Response({
+                'status': 'success',
+                'message': 'Category updated successfully'
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'DELETE':
+        try:
+            category.delete()
+            return Response({
+                'status': 'success',
+                'message': 'Category deleted successfully'
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+# =============================================================================
+# AUTHORS MANAGEMENT
+# =============================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def authors_management(request):
+    """
+    GET: List all authors
+    POST: Create new author
+    """
+    if request.method == 'GET':
+        authors = Author.objects.annotate(
+            book_count=Count('books')
+        ).order_by('last_name', 'first_name')
+        
+        # Search
+        search = request.GET.get('search')
+        if search:
+            authors = authors.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search)
+            )
+        
+        # Pagination
+        page = int(request.GET.get('page', 1))
+        page_size = int(request.GET.get('page_size', 20))
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        total = authors.count()
+        paginated_authors = authors[start:end]
+        
+        author_data = []
+        for author in paginated_authors:
+            author_data.append({
+                'id': author.id,
+                'first_name': author.first_name,
+                'last_name': author.last_name,
+                'full_name': author.full_name,
+                'book_count': author.book_count,
+                'created_at': author.created_at,
+            })
+        
+        return Response({
+            'status': 'success',
+            'authors': author_data,
+            'pagination': {
+                'page': page,
+                'page_size': page_size,
+                'total': total,
+                'total_pages': (total + page_size - 1) // page_size
+            }
+        })
+    
+    elif request.method == 'POST':
+        try:
+            first_name = request.data.get('first_name', '')
+            last_name = request.data.get('last_name')
+            
+            if not last_name:
+                return Response({
+                    'status': 'error',
+                    'message': 'Last name is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if author already exists
+            if Author.objects.filter(first_name=first_name, last_name=last_name).exists():
+                return Response({
+                    'status': 'error',
+                    'message': 'Author already exists'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            author = Author.objects.create(
+                first_name=first_name,
+                last_name=last_name
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': 'Author created successfully',
+                'author': {
+                    'id': author.id,
+                    'full_name': author.full_name
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAdminUser])
+def author_detail(request, author_id):
+    """
+    GET: Get author details
+    PUT: Update author
+    DELETE: Delete author
+    """
+    try:
+        author = Author.objects.get(id=author_id)
+    except Author.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'Author not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        # Get author's books
+        books = author.books.all()[:10]
+        book_list = [{'id': book.id, 'title': book.title} for book in books]
+        
+        return Response({
+            'status': 'success',
+            'author': {
+                'id': author.id,
+                'first_name': author.first_name,
+                'last_name': author.last_name,
+                'full_name': author.full_name,
+                'book_count': author.books.count(),
+                'books': book_list,
+                'created_at': author.created_at,
+            }
+        })
+    
+    elif request.method == 'PUT':
+        try:
+            if 'first_name' in request.data:
+                author.first_name = request.data['first_name']
+            if 'last_name' in request.data:
+                author.last_name = request.data['last_name']
+            
+            author.save()
+            
+            return Response({
+                'status': 'success',
+                'message': 'Author updated successfully',
+                'author': {
+                    'id': author.id,
+                    'full_name': author.full_name
+                }
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'DELETE':
+        try:
+            book_count = author.books.count()
+            if book_count > 0:
+                return Response({
+                    'status': 'error',
+                    'message': f'Cannot delete author with {book_count} books. Remove books first.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            author.delete()
+            return Response({
+                'status': 'success',
+                'message': 'Author deleted successfully'
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =============================================================================
+# PUBLISHERS MANAGEMENT
+# =============================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def publishers_management(request):
+    """
+    GET: List all publishers
+    POST: Create new publisher
+    """
+    if request.method == 'GET':
+        publishers = Publisher.objects.annotate(
+            book_count=Count('books')
+        ).order_by('name')
+        
+        # Search
+        search = request.GET.get('search')
+        if search:
+            publishers = publishers.filter(name__icontains=search)
+        
+        # Pagination
+        page = int(request.GET.get('page', 1))
+        page_size = int(request.GET.get('page_size', 20))
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        total = publishers.count()
+        paginated_publishers = publishers[start:end]
+        
+        publisher_data = []
+        for publisher in paginated_publishers:
+            publisher_data.append({
+                'id': publisher.id,
+                'name': publisher.name,
+                'book_count': publisher.book_count,
+                'created_at': publisher.created_at,
+            })
+        
+        return Response({
+            'status': 'success',
+            'publishers': publisher_data,
+            'pagination': {
+                'page': page,
+                'page_size': page_size,
+                'total': total,
+                'total_pages': (total + page_size - 1) // page_size
+            }
+        })
+    
+    elif request.method == 'POST':
+        try:
+            name = request.data.get('name')
+            
+            if not name:
+                return Response({
+                    'status': 'error',
+                    'message': 'Name is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if Publisher.objects.filter(name=name).exists():
+                return Response({
+                    'status': 'error',
+                    'message': 'Publisher already exists'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            publisher = Publisher.objects.create(name=name)
+            
+            return Response({
+                'status': 'success',
+                'message': 'Publisher created successfully',
+                'publisher': {
+                    'id': publisher.id,
+                    'name': publisher.name
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAdminUser])
+def publisher_detail(request, publisher_id):
+    """
+    GET: Get publisher details
+    PUT: Update publisher
+    DELETE: Delete publisher
+    """
+    try:
+        publisher = Publisher.objects.get(id=publisher_id)
+    except Publisher.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'Publisher not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        # Get publisher's books
+        books = publisher.books.all()[:10]
+        book_list = [{'id': book.id, 'title': book.title} for book in books]
+        
+        return Response({
+            'status': 'success',
+            'publisher': {
+                'id': publisher.id,
+                'name': publisher.name,
+                'book_count': publisher.books.count(),
+                'books': book_list,
+                'created_at': publisher.created_at,
+            }
+        })
+    
+    elif request.method == 'PUT':
+        try:
+            if 'name' in request.data:
+                publisher.name = request.data['name']
+                publisher.save()
+            
+            return Response({
+                'status': 'success',
+                'message': 'Publisher updated successfully',
+                'publisher': {
+                    'id': publisher.id,
+                    'name': publisher.name
+                }
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'DELETE':
+        try:
+            book_count = publisher.books.count()
+            if book_count > 0:
+                return Response({
+                    'status': 'error',
+                    'message': f'Cannot delete publisher with {book_count} books. Remove books first.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            publisher.delete()
+            return Response({
+                'status': 'success',
+                'message': 'Publisher deleted successfully'
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
