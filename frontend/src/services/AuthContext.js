@@ -126,6 +126,9 @@ export const AuthProvider = ({ children }) => {
       // Check if the token is still valid
       const response = await api.auth.checkStatus(storedTokens.access);
       
+      console.log('🔍 Auth check response:', response); 
+      console.log('👤 User data:', response.user); 
+
       if (response.status === 'success' && response.authenticated) {
         // Valid token - log in user
         dispatch({
@@ -205,17 +208,21 @@ export const AuthProvider = ({ children }) => {
         // Save to localStorage
         saveTokensToStorage(tokens);
         
-        // CHECK PREFERENCES IMMEDIATELY AFTER LOGIN
-        try {
-          const prefCheck = await api.preferences.checkProfile(tokens.access);
-          console.log('🔍 Preference check result:', prefCheck);
-          
-          if (prefCheck.status === 'success' && prefCheck.should_show_form) {
-            console.log('✨ Setting flag to show preference form');
-            localStorage.setItem('show_preference_form', 'true');
+        // CHECK PREFERENCES ONLY FOR NON-STAFF USERS
+        if (!user.is_staff) {
+          try {
+            const prefCheck = await api.preferences.checkProfile(tokens.access);
+            console.log('Preference check result:', prefCheck);
+            
+            if (prefCheck.status === 'success' && prefCheck.should_show_form) {
+              console.log('Setting flag to show preference form');
+              localStorage.setItem('show_preference_form', 'true');
+            }
+          } catch (err) {
+            console.error('Could not check preferences:', err);
           }
-        } catch (err) {
-          console.error('Could not check preferences:', err);
+        } else {
+          console.log('Staff user logged in - skipping preference form');
         }
         
         return { success: true, user };
@@ -249,9 +256,13 @@ export const AuthProvider = ({ children }) => {
           payload: { user, tokens }
         });
         
-        // ALWAYS SHOW PREFERENCE FORM AFTER REGISTRATION
-        console.log('🆕 New user registered - setting preference form flag');
-        localStorage.setItem('show_preference_form', 'true');
+        // SHOW PREFERENCE FORM ONLY FOR NON-STAFF USERS
+        if (!user.is_staff) {
+          console.log('🆕 New user registered - setting preference form flag');
+          localStorage.setItem('show_preference_form', 'true');
+        } else {
+          console.log('👔 Staff user registered - skipping preference form');
+        }
         
         return { success: true, user };
       } else {
@@ -277,7 +288,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       // Clear localStorage and state
       clearTokensFromStorage();
-      localStorage.removeItem('show_preference_form'); // ✅ Clear preference flag
+      localStorage.removeItem('show_preference_form'); // Clear preference flag
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
     }
   };

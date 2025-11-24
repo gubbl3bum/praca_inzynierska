@@ -17,6 +17,39 @@ from faker import Faker
 
 fake = Faker()
 
+def generate_unique_username(base_pattern, user_type):
+    """
+    Generate unique username with retry logic
+    
+    Args:
+        base_pattern: Base pattern like 'reader'
+        user_type: Type like 'heavy', 'specialist', etc.
+    
+    Returns:
+        Unique username
+    """
+    max_attempts = 100
+    
+    for attempt in range(max_attempts):
+        # Use larger range for better uniqueness
+        random_num = random.randint(10000, 999999)
+        username = f"{base_pattern}_{user_type}_{random_num}"
+        
+        # Check if username exists
+        if not User.objects.filter(username=username).exists():
+            return username
+    
+    # Fallback: use timestamp if all attempts failed
+    import time
+    timestamp = int(time.time() * 1000)
+    username = f"{base_pattern}_{user_type}_{timestamp}"
+    
+    # If even this exists (very unlikely), add random suffix
+    while User.objects.filter(username=username).exists():
+        username = f"{base_pattern}_{user_type}_{timestamp}_{random.randint(1, 999)}"
+    
+    return username
+
 class UserProfileGenerator:
     
     def __init__(self):
@@ -46,7 +79,8 @@ class UserProfileGenerator:
         """
         Heavy reader: 40-60 reviews, diverse genres, thoughtful ratings
         """
-        username = f"{username_base}_heavy_{random.randint(1000, 9999)}"
+        # ✅ POPRAWKA: Generate unique username
+        username = generate_unique_username(username_base, 'heavy')
         email = f"{username}@example.com"
         
         user = User.objects.create_user(
@@ -105,7 +139,8 @@ class UserProfileGenerator:
         """
         Genre specialist: 30-45 reviews, focused on 1-2 categories
         """
-        username = f"{username_base}_specialist_{random.randint(1000, 9999)}"
+        # ✅ POPRAWKA: Generate unique username
+        username = generate_unique_username(username_base, 'specialist')
         email = f"{username}@example.com"
         
         user = User.objects.create_user(
@@ -187,7 +222,8 @@ class UserProfileGenerator:
         """
         Critical reader: 25-40 reviews, wider rating distribution, detailed reviews
         """
-        username = f"{username_base}_critic_{random.randint(1000, 9999)}"
+        # ✅ POPRAWKA: Generate unique username
+        username = generate_unique_username(username_base, 'critic')
         email = f"{username}@example.com"
         
         user = User.objects.create_user(
@@ -239,7 +275,8 @@ class UserProfileGenerator:
         """
         Enthusiast: 20-35 reviews, mostly high ratings, positive reviews
         """
-        username = f"{username_base}_enthusiast_{random.randint(1000, 9999)}"
+        # ✅ POPRAWKA: Generate unique username
+        username = generate_unique_username(username_base, 'enthusiast')
         email = f"{username}@example.com"
         
         user = User.objects.create_user(
@@ -291,7 +328,8 @@ class UserProfileGenerator:
         """
         Casual reader: 10-20 reviews, moderate ratings
         """
-        username = f"{username_base}_casual_{random.randint(1000, 9999)}"
+        # ✅ POPRAWKA: Generate unique username
+        username = generate_unique_username(username_base, 'casual')
         email = f"{username}@example.com"
         
         user = User.objects.create_user(
@@ -357,7 +395,7 @@ def generate_rich_users(
     
     # Check if books exist
     if Book.objects.count() == 0:
-        print("No books in database! Import books first.")
+        print("❌ No books in database! Import books first.")
         return False
     
     generator = UserProfileGenerator()
@@ -374,56 +412,56 @@ def generate_rich_users(
     username_base = "reader"
     
     # Generate heavy readers
-    print(f"\nCreating {num_heavy} heavy readers...")
+    print(f"\n📚 Creating {num_heavy} heavy readers...")
     for i in range(num_heavy):
         try:
             generator.create_heavy_reader(username_base)
             stats['heavy_readers'] += 1
         except Exception as e:
-            print(f"   Error: {e}")
+            print(f"   ⚠️  Error: {e}")
     
     # Generate genre specialists
-    print(f"\nCreating {num_specialists} genre specialists...")
+    print(f"\n🎯 Creating {num_specialists} genre specialists...")
     for i in range(num_specialists):
         try:
             generator.create_genre_specialist(username_base)
             stats['genre_specialists'] += 1
         except Exception as e:
-            print(f"   Error: {e}")
+            print(f"   ⚠️  Error: {e}")
     
     # Generate critical readers
-    print(f"\nCreating {num_critics} critical readers...")
+    print(f"\n🎭 Creating {num_critics} critical readers...")
     for i in range(num_critics):
         try:
             generator.create_critical_reader(username_base)
             stats['critical_readers'] += 1
         except Exception as e:
-            print(f"   Error: {e}")
+            print(f"   ⚠️  Error: {e}")
     
     # Generate enthusiasts
-    print(f"\nCreating {num_enthusiasts} enthusiasts...")
+    print(f"\n⭐ Creating {num_enthusiasts} enthusiasts...")
     for i in range(num_enthusiasts):
         try:
             generator.create_enthusiast(username_base)
             stats['enthusiasts'] += 1
         except Exception as e:
-            print(f"   Error: {e}")
+            print(f"   ⚠️  Error: {e}")
     
     # Generate casual readers
-    print(f"\nCreating {num_casual} casual readers...")
+    print(f"\n📖 Creating {num_casual} casual readers...")
     for i in range(num_casual):
         try:
             generator.create_casual_reader(username_base)
             stats['casual_readers'] += 1
         except Exception as e:
-            print(f"   Error: {e}")
+            print(f"   ⚠️  Error: {e}")
     
     # Calculate total reviews
     stats['total_reviews'] = BookReview.objects.count()
     
     # Print summary
     print("\n" + "=" * 70)
-    print("USER GENERATION SUMMARY")
+    print("✅ USER GENERATION SUMMARY")
     print("=" * 70)
     print(f"    Total users created: {sum([stats[k] for k in stats if k != 'total_reviews'])}")
     print(f"    Heavy readers: {stats['heavy_readers']} (40-60 reviews each)")
@@ -431,10 +469,10 @@ def generate_rich_users(
     print(f"    Critical readers: {stats['critical_readers']} (25-40 reviews each)")
     print(f"    Enthusiasts: {stats['enthusiasts']} (20-35 reviews each)")
     print(f"    Casual readers: {stats['casual_readers']} (10-20 reviews each)")
-    print(f"\nTotal reviews in database: {stats['total_reviews']}")
-    print(f"Average reviews per user: {stats['total_reviews'] / max(1, sum([stats[k] for k in stats if k != 'total_reviews'])):.1f}")
+    print(f"\n📊 Total reviews in database: {stats['total_reviews']}")
+    print(f"📈 Average reviews per user: {stats['total_reviews'] / max(1, sum([stats[k] for k in stats if k != 'total_reviews'])):.1f}")
     
-    print("\nRich user generation completed!")
+    print("\n🎉 Rich user generation completed!")
     
     return True
 

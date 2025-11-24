@@ -21,6 +21,8 @@ import Badges from './pages/Badges';
 import LoginForm from "./components/auth/LoginForm";
 import RegisterForm from "./components/auth/RegisterForm";
 
+import AdminDashboard from './pages/AdminDashboard';
+
 function App() {
   return (
     <AuthProvider>
@@ -84,6 +86,15 @@ function App() {
                 element={
                   <ProtectedRoute requireAuth={true}>
                     <UserLists />
+                  </ProtectedRoute>
+                } 
+              />
+
+              <Route 
+                path="/admin" 
+                element={
+                  <ProtectedRoute requireAuth={true}>
+                    <AdminDashboard />
                   </ProtectedRoute>
                 } 
               />

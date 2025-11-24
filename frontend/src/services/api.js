@@ -1,5 +1,6 @@
 import reviewsApi from './reviewsApi';
 import gamificationApi from './gamificationApi';
+import adminApi from './adminApi';
 
 // API Configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
@@ -660,7 +661,8 @@ const api = {
         throw error;
       }
     }
-  }
+  },
+  admin: adminApi,
   };
 
 export default api;

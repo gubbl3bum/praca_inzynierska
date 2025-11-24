@@ -99,3 +99,26 @@ class UserProfileGamificationSerializer(serializers.Serializer):
             'statistics', 'showcased_badges', 'next_badges',
             'recent_achievements', 'rank_info'
         ]
+
+class BadgeAdminSerializer(serializers.ModelSerializer):
+    """Extended badge serializer for admin"""
+    rarity_color = serializers.ReadOnlyField(source='get_rarity_color')
+    users_earned = serializers.SerializerMethodField()
+    users_in_progress = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Badge
+        fields = [
+            'id', 'name', 'slug', 'description', 'icon',
+            'category', 'rarity', 'rarity_color',
+            'requirement_type', 'requirement_value', 'requirement_condition',
+            'points', 'is_active', 'is_hidden', 'order',
+            'created_at', 'updated_at',
+            'users_earned', 'users_in_progress'
+        ]
+    
+    def get_users_earned(self, obj):
+        return UserBadge.objects.filter(badge=obj, completed=True).count()
+    
+    def get_users_in_progress(self, obj):
+        return UserBadge.objects.filter(badge=obj, completed=False).count()

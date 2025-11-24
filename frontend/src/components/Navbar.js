@@ -8,7 +8,7 @@ const Navbar = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Ref dla dropdown menu
+  // Ref for drop down menu
   const dropdownRef = useRef(null);
 
   const handleLogout = async () => {
@@ -138,6 +138,16 @@ const Navbar = () => {
                     Badges
                   </Link>
                   
+                  {user?.is_staff && (
+                    <Link
+                      to="/admin"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={handleMenuItemClick}
+                    >
+                      🛡️ Admin Panel
+                    </Link>
+                  )}
+
                   <div className="border-t border-gray-100 mt-1">
                     <button
                       onClick={handleLogout}
