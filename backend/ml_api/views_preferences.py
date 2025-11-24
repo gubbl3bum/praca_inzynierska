@@ -92,14 +92,23 @@ def user_preference_profile(request):
             'errors': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
 
-
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def check_preference_profile(request):
     """
     Check if user has completed preference profile
+    Skip for staff users
     """
     user = request.user
+    
+    # Skip preference form for staff/admin users
+    if user.is_staff:
+        return Response({
+            'status': 'success',
+            'has_profile': True,  # Treat as if they have profile
+            'should_show_form': False,  # Never show form for staff
+            'is_staff': True
+        })
     
     try:
         profile = user.preference_profile
@@ -110,5 +119,6 @@ def check_preference_profile(request):
     return Response({
         'status': 'success',
         'has_profile': has_profile,
-        'should_show_form': not has_profile
+        'should_show_form': not has_profile,
+        'is_staff': False
     })
